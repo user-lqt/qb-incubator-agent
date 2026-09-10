@@ -31,9 +31,8 @@ QB：嗯——先说结论。明天不适合赶工期，但它是一个可以连
 | 🔍 **联网搜索** | 360 搜索主源 + 搜狗回退，自动解析跳转链为真实地址、过滤广告位 |
 | 📰 **行业动态** | 微电子/半导体行业展望：中文检索 + 国外行业媒体 RSS（SemiEngineering / EE Times / IEEE Spectrum / EEJournal） |
 | 🧮 **数学计算** | 安全沙箱内的表达式求值（禁用 `__builtins__`） |
-| 🌐 **网页版** | `serve.py` 零依赖起服务，同学用浏览器就能玩，多轮记忆 + 访问口令 + 每日限额 |
 | 🎭 **人设可插拔** | 全部人设写在 `persona.py`，换角色不用碰任何代码 |
-| 🎮 **结局玩法** | 12 轮对局 + 四个隐藏维度 + **六个结局**，网页版有状态条与结局横幅 |
+| 🎮 **结局玩法** | 12 轮对局 + 四个隐藏维度 + **六个结局**，终端每轮显示状态、结局打印横幅 |
 | 🔑 **不打包密钥** | `.env` 已被 gitignore，仓库里只有 `.env.example` |
 
 所有工具**免 API key**（除了模型本身需要你自己的 DeepSeek key），只用 Python 标准库实现联网。
@@ -54,28 +53,16 @@ python agent.py                       # 连续对话，exit 退出
 
 Windows 也可以直接双击 `setup.bat` 装依赖、`run.bat` 启动。
 
-## 🌐 网页版（分享给同学玩）
+## 🤝 分享给同学
+
+每人用自己的 key，各自本地跑（互不影响、互不烧对方的额度）：
 
 ```bash
-python serve.py        # 或双击 serve.bat
-```
-
-终端会打印本机与局域网地址，同 WiFi 的同学直接打开即可：
-
-```
-本机访问：   http://127.0.0.1:8080
-同 WiFi 同学：http://192.168.1.23:8080
-访问口令：   （未设置，任何人都能连）
-每日限额：   200
-```
-
-在 `.env` 里可配置：
-
-```ini
-ACCESS_PASSWORD=给同学的口令   # 防止陌生人白嫖你的额度
-DAILY_LIMIT=200                # 每日总提问上限，0 = 不限
-PORT=8080
-GAME_MODE=1                    # 1=结局玩法（默认）  0=退化成纯聊天
+git clone https://github.com/user-lqt/qb-incubator-agent.git
+cd qb-incubator-agent
+pip install -r requirements.txt
+cp .env.example .env          # 填入自己的 DEEPSEEK_API_KEY
+python agent.py --game        # 直接开一局：12 轮、六个结局
 ```
 
 ## 🎮 玩法：一次对话，六个结局
@@ -105,8 +92,7 @@ GAME_MODE=1                    # 1=结局玩法（默认）  0=退化成纯聊�
 世界观（孵化者为什么改收"耐久"）、动机、行为逻辑、可复现的语言公式、六结局收束规则。
 
 ```bash
-python agent.py --game     # 命令行对局模式（每轮显示状态，结局打印横幅）
-python serve.py            # 网页版：状态条 + 结局横幅 + 重新开始（开启下一条时间线）
+python agent.py --game     # 对局模式：每轮显示状态，结局打印横幅，可 y 开启下一条时间线
 ```
 
 实现上，`game.py` 每轮把状态以「游戏主持指令」注入模型上下文（不朗读数值），
@@ -171,13 +157,12 @@ agent.py          # 93 行核心：主循环 + 命令行入口（含 --game 对�
 game.py           # 结局玩法：四维状态机 + 六个结局 + 收束调用
 persona.py        # 人设与行为守则（换角色只改这里）
 tools.py          # 工具车间：函数实现 + FUNCTIONS 电话本 + TOOLS 菜单
-serve.py          # 网页版服务（纯标准库 HTTP + 内嵌聊天页 + 状态条/结局横幅）
 docs/qb-设定集.md  # 世界观圣经：动机、行为逻辑、语言公式、结局规则
 tests/test_endings.py            # 六结局触发测试（不调模型、不需要 key）
 .github/workflows/ci.yml         # CI：导入自检 + 注册表一致性 + 结局测试
 requirements.txt  # 依赖（openai、python-dotenv、tzdata）
 .env.example      # 配置模板（复制成 .env 并填 key）
-setup.bat / run.bat / serve.bat   # Windows 一键脚本
+setup.bat / run.bat               # Windows 一键脚本
 使用说明.md        # 给同学看的玩法说明
 ```
 

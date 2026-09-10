@@ -28,7 +28,7 @@ jobs:
 
       - name: 模块导入自检（不联网、不调用模型）
         run: |
-          python -c "import agent, persona, tools, game, serve; print('imports ok')"
+          python -c "import agent, persona, tools, game; print('imports ok')"
 
       - name: 工具注册表完整性
         run: |
