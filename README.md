@@ -31,9 +31,10 @@ QB：嗯——先说结论。明天不适合赶工期，但它是一个可以连
 | 🔍 **联网搜索** | 360 搜索主源 + 搜狗回退，自动解析跳转链为真实地址、过滤广告位 |
 | 📰 **行业动态** | 微电子/半导体行业展望：中文检索 + 国外行业媒体 RSS（SemiEngineering / EE Times / IEEE Spectrum / EEJournal） |
 | 🧮 **数学计算** | 安全沙箱内的表达式求值（禁用 `__builtins__`） |
-| 🎭 **人设可插拔** | 全部人设写在 `persona.py`，换角色不用碰任何代码 |
+| 🎭 **人设可插拔** | 全部人设写在 `persona.py`，换角色不用碰任何代码（前端由脚本同步） |
 | 🎮 **结局玩法** | 12 轮对局 + 四个隐藏维度 + **六个结局**，终端每轮显示状态、结局打印横幅 |
-| 🔑 **不打包密钥** | `.env` 已被 gitignore，仓库里只有 `.env.example` |
+| 🌐 **在线试玩（纯前端）** | `web/` 是一份零后端静态页：访客填自己的 key，浏览器直连模型，GitHub Pages 直接托管 |
+| 🔑 **不打包密钥** | `.env` 已被 gitignore，仓库里只有 `.env.example`；前端 key 只存访客浏览器 |
 
 所有工具**免 API key**（除了模型本身需要你自己的 DeepSeek key），只用 Python 标准库实现联网。
 
@@ -55,7 +56,26 @@ Windows 也可以直接双击 `setup.bat` 装依赖、`run.bat` 启动。
 
 ## 🤝 分享给同学
 
-每人用自己的 key，各自本地跑（互不影响、互不烧对方的额度）：
+两条路，任选：
+
+**① 在线试玩（纯前端，推荐）** —— 打开网址 → 填自己的 key → 直接开局。
+
+开启方式（一次性）：仓库 `Settings → Pages → Source` 选 **GitHub Actions**，
+之后每次改动 `web/` 会自动部署到：
+
+```
+https://user-lqt.github.io/qb-incubator-agent/
+```
+
+本地预览：
+
+```bash
+cd web && python -m http.server 8000     # 然后打开 http://127.0.0.1:8000
+```
+
+> 为什么用本地服务器：直接双击 `index.html` 时浏览器会以 `file://` 载入，ES 模块会被 CORS 拦下。
+
+**② 本地 Python 版**（功能最全，含中文检索与行业报告）：
 
 ```bash
 git clone https://github.com/user-lqt/qb-incubator-agent.git
@@ -64,6 +84,23 @@ pip install -r requirements.txt
 cp .env.example .env          # 填入自己的 DEEPSEEK_API_KEY
 python agent.py --game        # 直接开一局：12 轮、六个结局
 ```
+
+### 两个版本的能力对照
+
+| 能力 | 纯前端（`web/`） | Python 版 |
+|---|---|---|
+| 12 轮对局 / 六结局 / 状态条 | ✅ | ✅ |
+| 天气（含 1~7 天预报，真实数据） | ✅ | ✅ |
+| IP 定位（多源交叉 + 坐标直查） | ✅ | ✅ |
+| 英文科技资讯检索（Hacker News） | ✅ | — |
+| 中文搜索 / 网页抓取（360、搜狗） | ❌ 浏览器跨域受限 | ✅ |
+| 行业媒体 RSS（SemiEngineering 等） | ❌ | ✅ |
+| 土木论据库（就业/基建/考公） | ❌ | ✅ |
+| 需要 API key | 访客自己的（存浏览器） | 自己的（存 `.env`） |
+| 需要服务器 | 不需要 | 不需要（本机跑） |
+
+前端人设由 `tools/sync_persona.py` 从 `persona.py` 自动同步到 `web/persona.js`——**只维护一份提示词**：
+改完 `persona.py` 后运行 `python tools/sync_persona.py`（CI 会校验是否同步）。
 
 ## 🎮 玩法：一次对话，六个结局
 
@@ -158,7 +195,15 @@ game.py           # 结局玩法：四维状态机 + 六个结局 + 收束调用
 persona.py        # 人设与行为守则（换角色只改这里）
 tools.py          # 工具车间：函数实现 + FUNCTIONS 电话本 + TOOLS 菜单
 docs/qb-设定集.md  # 世界观圣经：动机、行为逻辑、语言公式、结局规则
-tests/test_endings.py            # 六结局触发测试（不调模型、不需要 key）
+web/              # 纯前端版（BYOK，可托管到 GitHub Pages）
+  ├─ index.html   #   界面：key 输入、状态条、结局横幅、聊天区
+  ├─ agent.js     #   fetch 版 Agent 内核（思考 → 调工具 → 观察）
+  ├─ game.js      #   状态机与六结局（game.py 的 JS 移植）
+  ├─ tools.js     #   浏览器可用工具（天气/定位/资讯/时间/计算）
+  ├─ persona.js   #   由 tools/sync_persona.py 从 persona.py 生成
+  └─ tests/       #   语法与结局测试（node）；smoke.mjs 需自备 key
+tools/sync_persona.py            # persona.py → web/persona.js 同步脚本
+tests/test_endings.py            # 六结局触发测试（Python 版，不调模型）
 .github/workflows/ci.yml         # CI：导入自检 + 注册表一致性 + 结局测试
 requirements.txt  # 依赖（openai、python-dotenv、tzdata）
 .env.example      # 配置模板（复制成 .env 并填 key）
@@ -169,11 +214,14 @@ setup.bat / run.bat               # Windows 一键脚本
 ## 🧪 测试
 
 ```bash
-python tests/test_endings.py     # 六结局触发条件（纯状态机，不花 API 费用）
+python tests/test_endings.py          # 六结局触发条件（Python 版，不花 API 费用）
+python tools/sync_persona.py --check  # 校验前端人设与 persona.py 同步
+cd web && node tests/game.test.mjs && node tests/sync.test.mjs   # 前端逻辑测试
+node web/tests/smoke.mjs              # 端到端冒烟（真实调用模型，需 QB_KEY 或 .env）
 ```
 
-CI（GitHub Actions）会在 Python 3.10 / 3.12 上跑三件事：模块导入自检、
-`TOOLS` 菜单与 `FUNCTIONS` 电话本的一致性校验、以及六结局触发测试。
+CI（GitHub Actions）会在 Python 3.10 / 3.12 上跑：模块导入自检、`TOOLS`/`FUNCTIONS` 一致性、
+六结局测试；另有一条 Node 流水线检查前端语法与六结局（JS 版）并校验人设同步。
 
 ## 🎭 换人设
 

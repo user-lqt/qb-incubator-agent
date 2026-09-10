@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>孵化者 QB · 契约终端</title>
+<meta name="description" content="孵化者 QB：一个只会劝你学土木的 Agent。12 轮对局，六个结局。自带 API key，纯前端运行。">
+<style>
+  :root { --pink:#ff9ec7; --ink:#2b2b33; --bg:#fdf7fa; --line:#f0e2e9; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink);
+         font:15px/1.75 "Microsoft YaHei","PingFang SC",system-ui,sans-serif; }
+  header { padding:12px 18px; background:#fff; border-bottom:1px solid var(--line);
+           display:flex; align-items:center; gap:10px; position:sticky; top:0; z-index:5; flex-wrap:wrap; }
+  header b { font-size:16px; }
+  header .dot { width:10px; height:10px; border-radius:50%; background:var(--pink); }
+  header input, header select { border:1px solid #ecd9e2; border-radius:8px; padding:6px 10px; font:inherit; }
+  #key { width:230px; } #model { width:150px; }
+  header .sp { margin-left:auto; }
+  header button { border:0; border-radius:8px; padding:7px 12px; background:var(--pink); color:#3a2030;
+                  font:inherit; font-weight:600; cursor:pointer; }
+  #bars { display:none; gap:14px; padding:10px 18px; background:#fff; border-bottom:1px solid var(--line);
+          position:sticky; top:60px; z-index:4; flex-wrap:wrap; font-size:12px; color:#7b6270; }
+  #bars .m { display:flex; align-items:center; gap:6px; }
+  #bars .track { width:74px; height:6px; border-radius:3px; background:#f3e8ee; overflow:hidden; }
+  #bars .fill { height:100%; width:0; background:var(--pink); transition:width .35s; }
+  #banner { display:none; margin:14px auto 0; max-width:840px; padding:12px 16px; border-radius:12px;
+            background:#fff0f6; border:1px dashed var(--pink); color:#7a3355; }
+  #banner b { display:block; font-size:15px; margin-bottom:4px; }
+  main { max-width:840px; margin:0 auto; padding:18px; }
+  #log { display:flex; flex-direction:column; gap:14px; }
+  .b { border-radius:14px; padding:12px 14px; white-space:pre-wrap; word-break:break-word; }
+  .me { align-self:flex-end; background:#fff; border:1px solid var(--line); max-width:78%; }
+  .qb { align-self:flex-start; background:var(--pink); color:#3a2030; max-width:88%; }
+  .sys { align-self:center; color:#a38f9a; font-size:13px; text-align:center; }
+  .sys code { background:#f6ecf1; border-radius:4px; padding:1px 5px; }
+  footer { position:sticky; bottom:0; background:#fff; border-top:1px solid var(--line); padding:12px 18px; }
+  .row { max-width:840px; margin:0 auto; display:flex; gap:10px; align-items:flex-end; }
+  textarea { flex:1; resize:vertical; min-height:46px; max-height:140px; padding:12px;
+             border:1px solid #ecd9e2; border-radius:10px; font:inherit; }
+  footer button { border:0; border-radius:10px; padding:12px 18px; font:inherit; cursor:pointer; }
+  #send { background:var(--pink); color:#3a2030; font-weight:600; }
+  #reset { background:#f3e8ee; color:#7b6270; }
+  button[disabled] { opacity:.5; cursor:default; }
+  .hint { max-width:840px; margin:10px auto 0; color:#a38f9a; font-size:12px; }
+</style>
+</head>
+<body>
+<header>
+  <span class="dot"></span><b>孵化者 QB</b>
+  <input id="key" type="password" placeholder="DeepSeek API key（sk-…）" autocomplete="off">
+  <select id="model">
+    <option value="deepseek-chat">deepseek-chat</option>
+    <option value="deepseek-reasoner">deepseek-reasoner</option>
+  </select>
+  <span class="sp"></span>
+  <button id="save">保存 key</button>
+</header>
+
+<div id="bars"></div>
+<div id="banner"></div>
+
+<main><div id="log">
+  <div class="b qb">嗯——僕在。
+先填写你自己的 DeepSeek API key（只存在这台设备的浏览器里，不会上传到任何服务器）。
+这一局共十二轮，六个结局。要不要签，由君决定。</div>
+</div></main>
+<div class="hint">提示：浏览器版可用工具为 天气 / IP 定位 / 英文科技资讯 / 时间 / 计算；中文搜索与行业报告检索在 Python 版里。</div>
+
+<footer><div class="row">
+  <textarea id="q" placeholder="输入问题，Enter 发送（Shift+Enter 换行）"></textarea>
+  <button id="send">发送</button><button id="reset">重新开始</button>
+</div></footer>
+
+<script type="module">
+import { QBClient } from "./agent.js";
+
+const $ = (id) => document.getElementById(id);
+const log = $("log"), keyInput = $("key"), modelSelect = $("model");
+
+let client = null;
+
+function add(cls, text) {
+  const d = document.createElement("div");
+  d.className = "b " + cls;
+  d.textContent = text;
+  log.appendChild(d);
+  window.scrollTo(0, document.body.scrollHeight);
+  return d;
+}
+
+function metric(label, value) {
+  const m = document.createElement("div");
+  m.className = "m";
+  m.innerHTML = `<span>${label}</span><span class="track"><span class="fill" style="width:${value}%"></span></span>`;
+  return m;
+}
+
+function renderBars(state) {
+  const bars = $("bars");
+  bars.style.display = "flex";
+  bars.innerHTML = "";
+  bars.append(metric("契约", state.contract), metric("怀疑", state.suspicion),
+              metric("绝望", state.despair), metric("抗拒", state.resistance));
+  const t = document.createElement("div");
+  t.className = "m";
+  t.textContent = `第 ${state.turn}/${state.max_turns} 轮`;
+  bars.appendChild(t);
+}
+
+function showEnding(title, tagline) {
+  if (!title) return;
+  const banner = $("banner");
+  banner.style.display = "block";
+  banner.innerHTML = `<b>结局：${title}</b>${tagline || ""}<br>点「重新开始」可开启下一条时间线。`;
+}
+
+function buildClient() {
+  const apiKey = keyInput.value.trim();
+  if (!apiKey) return null;
+  return new QBClient({ apiKey, model: modelSelect.value });
+}
+
+async function ask() {
+  const text = $("q").value.trim();
+  if (!text) return;
+  if (!client) {
+    client = buildClient();
+    if (!client) { add("sys", "请先填写自己的 DeepSeek API key（右上角）。"); return; }
+  }
+  add("me", text);
+  $("q").value = "";
+  $("send").disabled = true;
+  const waiting = add("sys", "僕在计算……");
+  try {
+    const r = await client.turn(text);
+    waiting.remove();
+    add("qb", r.answer);
+    renderBars(r.state);
+    showEnding(r.ending_title, r.ending_tagline);
+  } catch (e) {
+    waiting.remove();
+    add("sys", "出错了：" + e.message + "（检查 key、余额与网络；跨域失败请换用本地 http 服务器打开本页）");
+  } finally {
+    $("send").disabled = false;
+    $("q").focus();
+  }
+}
+
+$("send").onclick = ask;
+$("reset").onclick = () => {
+  client = buildClient() || new QBClient({ apiKey: "dummy", model: modelSelect.value });
+  client.reset();
+  log.innerHTML = "";
+  $("banner").style.display = "none";
+  $("bars").innerHTML = "";
+  add("sys", "时间线已重置。第十二次轮回开始——或者，是第十三次。");
+};
+
+$("save").onclick = () => {
+  localStorage.setItem("qb_key", keyInput.value.trim());
+  localStorage.setItem("qb_model", modelSelect.value);
+  client = buildClient();
+  add("sys", client ? "key 已保存在本机浏览器（authorization 只在请求模型时使用）。" : "key 为空。");
+};
+
+keyInput.value = localStorage.getItem("qb_key") || "";
+modelSelect.value = localStorage.getItem("qb_model") || "deepseek-chat";
+client = buildClient();
+$("q").addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); ask(); }
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,53 @@
+name: Deploy web (GitHub Pages)
+
+# 纯前端版本（web/）：访客自带 DeepSeek key，浏览器直连模型，无后端、无服务器成本。
+# 首次使用：仓库 Settings → Pages → Source 选择 "GitHub Actions"。
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - "web/**"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: 前端语法与状态机测试
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: 语法检查
+        run: |
+          for f in web/*.js web/tests/*.mjs; do node --check "$f"; echo "ok $f"; done
+      - name: 结局状态机（JS 版）
+        run: node web/tests/game.test.mjs
+      - name: 人设同步校验（persona.py → web/persona.js）
+        run: node web/tests/sync.test.mjs
+
+  deploy:
+    needs: verify
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: web
+      - id: deployment
+        uses: actions/deploy-pages@v4

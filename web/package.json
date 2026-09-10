@@ -1,0 +1,9 @@
+{
+  "name": "qb-incubator-web",
+  "private": true,
+  "type": "module",
+  "description": "孵化者 QB 的纯前端（BYOK）版本：静态页直连模型，无需后端",
+  "scripts": {
+    "test": "node tests/game.test.mjs && node tests/sync.test.mjs"
+  }
+}
