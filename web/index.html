@@ -67,12 +67,7 @@
 <div id="bars"></div>
 <div id="banner"></div>
 
-<main><div id="log">
-  <div class="b qb">嗯——僕在。
-先填写你自己的 DeepSeek API key（只存在这台设备的浏览器里，不会上传到任何服务器）。
-这一局从十二轮起算，但只要你还在推进，僕就会继续等下去——上限会自己往后延长。
-要不要签，由君决定。</div>
-</div></main>
+<main><div id="log"></div></main>
 <div class="hint">提示：浏览器版可用工具为 天气 / IP 定位 / 英文科技资讯 / 时间 / 计算；中文搜索与行业报告检索在 Python 版里。</div>
 
 <footer><div class="row">
@@ -82,6 +77,7 @@
 
 <script type="module">
 import { QBClient } from "./agent.js";
+import { BASE_TURNS, HARD_CAP, PROLOGUE } from "./game.js";
 
 const $ = (id) => document.getElementById(id);
 const log = $("log"), keyInput = $("key"), modelSelect = $("model");
@@ -176,6 +172,10 @@ $("reset").onclick = () => {
   $("banner").style.display = "none";
   $("bars").innerHTML = "";
   add("sys", "时间线已重置。第十二次轮回开始——或者，是第十三次。");
+  add("qb", PROLOGUE);
+  if (!keyInput.value.trim()) {
+    add("sys", "先在右上角填入你自己的 DeepSeek API key（只存这台设备的浏览器），再开始对话。");
+  }
 };
 
 $("save").onclick = () => {
@@ -202,6 +202,12 @@ modelSelect.addEventListener("change", () => {
 });
 client = buildClient();
 refreshKeyState();
+
+// 开场：世界观序章 + 上手提示（序章文本来自 game.js，与命令行版同源）
+add("qb", PROLOGUE);
+add("sys", keyInput.value.trim()
+  ? `这一局上限 ${BASE_TURNS} 轮，只要君还在推进，僕就会继续等下去（最多 ${HARD_CAP} 轮）。要不要签，由君决定。`
+  : "先在右上角填入你自己的 DeepSeek API key（只存这台设备的浏览器，不会被上传），再开始对话。");
 $("q").addEventListener("keydown", (e) => {
   if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); ask(); }
 });

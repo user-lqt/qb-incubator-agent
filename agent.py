@@ -90,7 +90,11 @@ if __name__ == "__main__":
 
         state = game.new_state()
         history = None
-        print("\n【对局开始】孵化者·土木支线｜共 %d 轮，六个结局。输入 exit 退出。" % game.MAX_TURNS)
+        print("\n" + "=" * 58)
+        print(game.PROLOGUE)
+        print("=" * 58)
+        print(f"\n【对局开始】孵化者·土木支线｜上限 {game.BASE_TURNS} 轮"
+              f"（推进可延长，硬顶 {game.HARD_CAP}），六个结局。输入 exit 退出。")
         print("提示：签约线/真相线/悲剧线/抗拒线/彩蛋线，任君选择。\n")
         while True:
             q = input("你 > ").strip()
