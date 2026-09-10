@@ -21,6 +21,13 @@
   header .sp { margin-left:auto; }
   header button { border:0; border-radius:8px; padding:7px 12px; background:var(--pink); color:#3a2030;
                   font:inherit; font-weight:600; cursor:pointer; }
+  .avatar { width:34px; height:34px; border-radius:50%; background:#fff; border:1px solid var(--line);
+            flex:0 0 auto; object-fit:contain; display:block; }
+  header .avatar { width:26px; height:26px; }
+  .ghbtn { display:inline-flex; align-items:center; gap:6px; text-decoration:none;
+           border:1px solid #ecd9e2; border-radius:8px; padding:6px 11px; color:#7b6270;
+           font-size:13px; background:#fff; white-space:nowrap; }
+  .ghbtn:hover { background:#fff0f6; color:#b3356b; border-color:var(--pink); }
   #keyState { font-size:12px; padding:4px 9px; border-radius:999px; background:#f3e8ee; color:#7b6270; white-space:nowrap; }
   #keyState.ok { background:#e8f7ee; color:#1f7a45; }
   #keyState.bad { background:#fff0f6; color:#b3356b; }
@@ -35,6 +42,10 @@
   main { flex:1 1 auto; width:100%; max-width:840px; margin:0 auto; padding:18px;
          overflow-y:auto; overscroll-behavior:contain; }
   #log { display:flex; flex-direction:column; gap:14px; }
+  .msg { display:flex; gap:10px; align-items:flex-start; }
+  .msg.me { justify-content:flex-end; }
+  .msg.sys { justify-content:center; }
+  .msg.qb .b { max-width:calc(100% - 46px); }
   .b { border-radius:14px; padding:12px 14px; white-space:pre-wrap; word-break:break-word; }
   .me { align-self:flex-end; background:#fff; border:1px solid var(--line); max-width:78%; }
   .qb { align-self:flex-start; background:var(--pink); color:#3a2030; max-width:88%; }
@@ -53,7 +64,9 @@
 </head>
 <body>
 <header>
-  <span class="dot"></span><b>孵化者 QB</b>
+  <img class="avatar" id="avatar" src="./qb.png" alt="孵化者"
+       onerror="this.onerror=null;this.src='./qb.svg';">
+  <b>孵化者 QB</b>
   <input id="key" type="password" placeholder="DeepSeek API key（sk-…）" autocomplete="off">
   <select id="model">
     <option value="deepseek-chat">deepseek-chat</option>
@@ -62,6 +75,8 @@
   <span class="sp"></span>
   <span id="keyState" class="bad">未配置 key</span>
   <button id="save">保存 key</button>
+  <a class="ghbtn" href="https://github.com/user-lqt/qb-incubator-agent"
+     target="_blank" rel="noopener">⌂ 源码仓库</a>
 </header>
 
 <div id="bars"></div>
@@ -84,14 +99,29 @@ const log = $("log"), keyInput = $("key"), modelSelect = $("model");
 
 let client = null;
 
+const AVATAR_SRC = "./qb.png";   // 放了自己的 qb.png 就自动用它，否则回退内置 qb.svg
+
+function avatarImg(cls) {
+  const img = document.createElement("img");
+  img.className = "avatar";
+  img.alt = "孵化者";
+  img.src = AVATAR_SRC;
+  img.onerror = () => { img.onerror = null; img.src = "./qb.svg"; };
+  return img;
+}
+
 function add(cls, text) {
+  const wrap = document.createElement("div");
+  wrap.className = "msg " + cls;
+  if (cls === "qb") wrap.appendChild(avatarImg());
   const d = document.createElement("div");
   d.className = "b " + cls;
   d.textContent = text;
-  log.appendChild(d);
+  wrap.appendChild(d);
+  log.appendChild(wrap);
   const scroller = document.querySelector("main");   // 消息区自己滚动（页面本身不再滚动）
   scroller.scrollTop = scroller.scrollHeight;
-  return d;
+  return wrap;
 }
 
 function metric(label, value) {
