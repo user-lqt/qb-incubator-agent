@@ -35,14 +35,18 @@ MODEL = os.getenv("MODEL", "deepseek-v4-flash")
 from persona import SYSTEM_PROMPT  # 人设与行为守则（换角色只改 persona.py）
 
 
-def run_agent(question: str, max_steps: int = 10, history=None, return_history: bool = False):
+def run_agent(question: str, max_steps: int = 10, history=None,
+              return_history: bool = False, extra_system: str = ""):
     """主循环：每轮把模型回复（可能带 tool_calls）追加入 messages，
     执行工具并把结果以 role=tool 追加，直到模型给出纯文本答案。
 
     history：上一轮的对话记录（不含 system），传入即可实现多轮记忆；
-    return_history=True 时返回 (答案, 更新后的history)，供网页服务等场景使用。
+    return_history=True 时返回 (答案, 更新后的history)；
+    extra_system：额外的主持/规则指令（如 game.py 注入的局内状态），优先级高于人设。
     """
     messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+    if extra_system:
+        messages.append({"role": "system", "content": extra_system})
     if history:
         messages.extend(history)
     messages.append({"role": "user", "content": question})
@@ -80,6 +84,36 @@ def run_agent(question: str, max_steps: int = 10, history=None, return_history: 
 
 
 if __name__ == "__main__":
+    # 结局玩法模式：python agent.py --game
+    if "--game" in sys.argv:
+        import game
+
+        state = game.new_state()
+        history = None
+        print("\n【对局开始】孵化者·土木支线｜共 %d 轮，六个结局。输入 exit 退出。" % game.MAX_TURNS)
+        print("提示：签约线/真相线/悲剧线/抗拒线/彩蛋线，任君选择。\n")
+        while True:
+            q = input("你 > ").strip()
+            if q.lower() in ("exit", "quit"):
+                break
+            if not q:
+                continue
+            result = game.chat(q, history=history, state=state)
+            history, state = result["history"], result["state"]
+            print("\n" + game.state_brief(state))
+            print(result["answer"] + "\n")
+            if result["ending"]:
+                print("=" * 58)
+                print(f"【结局：{result['ending_title']}】{result['ending_tagline']}")
+                print("=" * 58)
+                again = input("再来一条时间线？(y/n) > ").strip().lower()
+                if again == "y":
+                    state, history = game.new_state(), None
+                    print("\n【时间线重置】第十二次记录已归档。\n")
+                else:
+                    break
+        sys.exit(0)
+
     # 支持命令行直接提问：python agent.py "你的问题"
     if len(sys.argv) > 1:
         q = " ".join(sys.argv[1:]).strip()

@@ -6,6 +6,7 @@
   PORT=8080              # 端口
   ACCESS_PASSWORD=xxx    # 访问口令（建议设置，防止陌生人白嫖你的额度）
   DAILY_LIMIT=200        # 每日总提问上限（0 表示不限）
+  GAME_MODE=1            # 1=开启结局玩法（状态条 + 6 个结局），0=纯聊天
 """
 import json
 import os
@@ -22,13 +23,15 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 load_dotenv(os.path.join(_HERE, ".env"))   # 脚本旁的 .env 优先
 load_dotenv()                              # 再兜底当前目录
 
-from agent import run_agent  # noqa: E402  （必须在 load_dotenv 之后导入）
+import game  # noqa: E402
+from agent import run_agent  # noqa: E402
 
 PORT = int(os.getenv("PORT", "8080"))
 PASSWORD = os.getenv("ACCESS_PASSWORD", "").strip()
 DAILY_LIMIT = int(os.getenv("DAILY_LIMIT", "200"))
+GAME_MODE = os.getenv("GAME_MODE", "1").strip() not in ("0", "false", "False")
 
-_sessions = {}          # sid -> 对话历史（不含 system）
+_sessions = {}          # sid -> {"history": [...], "state": {...}}
 _lock = threading.Lock()
 _counter = {"day": "", "n": 0}
 
@@ -42,18 +45,26 @@ PAGE = """<!doctype html>
   :root { --pink:#ff9ec7; --ink:#2b2b33; --bg:#fdf7fa; }
   * { box-sizing: border-box; }
   body { margin:0; background:var(--bg); color:var(--ink);
-         font: 15px/1.7 "Microsoft YaHei", "PingFang SC", system-ui, sans-serif; }
-  header { padding:14px 18px; background:#fff; border-bottom:1px solid #f0e2e9;
-           display:flex; align-items:center; gap:10px; position:sticky; top:0; }
+         font: 15px/1.75 "Microsoft YaHei", "PingFang SC", system-ui, sans-serif; }
+  header { padding:12px 18px; background:#fff; border-bottom:1px solid #f0e2e9;
+           display:flex; align-items:center; gap:10px; position:sticky; top:0; z-index:5; }
   header b { font-size:16px; }
   header .dot { width:10px; height:10px; border-radius:50%; background:var(--pink); }
   #pw { margin-left:auto; border:1px solid #ecd9e2; border-radius:8px; padding:6px 10px; width:130px; }
+  #bars { display:none; gap:14px; padding:10px 18px; background:#fff; border-bottom:1px solid #f0e2e9;
+          position:sticky; top:52px; z-index:4; flex-wrap:wrap; font-size:12px; color:#7b6270; }
+  #bars .m { display:flex; align-items:center; gap:6px; }
+  #bars .track { width:74px; height:6px; border-radius:3px; background:#f3e8ee; overflow:hidden; }
+  #bars .fill { height:100%; width:0; background:var(--pink); transition:width .3s; }
+  #banner { display:none; margin:14px auto 0; max-width:820px; padding:12px 16px; border-radius:12px;
+            background:#fff0f6; border:1px dashed var(--pink); color:#7a3355; }
+  #banner b { display:block; font-size:15px; margin-bottom:4px; }
   main { max-width:820px; margin:0 auto; padding:18px; }
-  #log { display:flex; flex-direction:column; gap:14px; padding-bottom:12px; }
+  #log { display:flex; flex-direction:column; gap:14px; }
   .b { border-radius:14px; padding:12px 14px; white-space:pre-wrap; word-break:break-word; }
-  .me { align-self:flex-end; background:#ffffff; border:1px solid #f0e2e9; max-width:78%; }
+  .me { align-self:flex-end; background:#fff; border:1px solid #f0e2e9; max-width:78%; }
   .qb { align-self:flex-start; background:var(--pink); color:#3a2030; max-width:88%; }
-  .sys { align-self:center; color:#a38f9a; font-size:13px; }
+  .sys { align-self:center; color:#a38f9a; font-size:13px; text-align:center; }
   footer { position:sticky; bottom:0; background:#fff; border-top:1px solid #f0e2e9; padding:12px 18px; }
   .row { max-width:820px; margin:0 auto; display:flex; gap:10px; align-items:flex-end; }
   textarea { flex:1; resize:vertical; min-height:46px; max-height:140px; padding:12px;
@@ -68,21 +79,49 @@ PAGE = """<!doctype html>
 <header><span class="dot"></span><b>孵化者 · 契约终端</b>
   <input id="pw" placeholder="口令（若已设置）">
 </header>
+<div id="bars"></div>
+<div id="banner"></div>
 <main><div id="log">
-  <div class="b qb">嗯——僕在。君想问什么？天气、行业、专业选择，都可以。僕会如实回答，然后提案。</div>
+  <div class="b qb">嗯——僕在。
+君想问什么都可以：天气、行业、专业选择。僕会先给事实，再给提案。
+一共十二轮。要不要签，由君决定。</div>
 </div></main>
 <footer><div class="row">
   <textarea id="q" placeholder="输入问题，Enter 发送（Shift+Enter 换行）"></textarea>
-  <button id="send">发送</button><button id="reset">清空</button>
+  <button id="send">发送</button><button id="reset">重新开始</button>
 </div></footer>
 <script>
 const log = document.getElementById('log'), q = document.getElementById('q');
 const send = document.getElementById('send'), pw = document.getElementById('pw');
+const bars = document.getElementById('bars'), banner = document.getElementById('banner');
 const sid = (localStorage.qb_sid = localStorage.qb_sid || Math.random().toString(36).slice(2));
 pw.value = localStorage.qb_pw || '';
 pw.onchange = () => localStorage.qb_pw = pw.value;
+
 function add(cls, text){ const d = document.createElement('div'); d.className = 'b ' + cls;
   d.textContent = text; log.appendChild(d); window.scrollTo(0, document.body.scrollHeight); return d; }
+
+function metric(label, value){
+  const m = document.createElement('div'); m.className = 'm';
+  m.innerHTML = `<span>${label}</span><span class="track"><span class="fill" style="width:${value}%"></span></span>`;
+  return m;
+}
+function renderBars(st){
+  if (!st) return;
+  bars.style.display = 'flex'; bars.innerHTML = '';
+  bars.appendChild(metric('契约', st.contract));
+  bars.appendChild(metric('怀疑', st.suspicion));
+  bars.appendChild(metric('绝望', st.despair));
+  bars.appendChild(metric('抗拒', st.resistance));
+  const t = document.createElement('div'); t.className = 'm';
+  t.textContent = `第 ${st.turn}/${st.max_turns || 12} 轮`; bars.appendChild(t);
+}
+function showEnding(title, tagline){
+  if (!title) return;
+  banner.style.display = 'block';
+  banner.innerHTML = `<b>结局：${title}</b>${tagline || ''}<br>点「重新开始」可开启下一条时间线。`;
+}
+
 async function ask(){
   const text = q.value.trim(); if (!text) return;
   add('me', text); q.value = ''; send.disabled = true;
@@ -94,6 +133,8 @@ async function ask(){
     const data = await r.json();
     waiting.remove();
     add(r.ok ? 'qb' : 'sys', data.answer || data.error || '未知错误');
+    if (data.state) renderBars(data.state);
+    showEnding(data.ending_title, data.ending_tagline);
   } catch (e) { waiting.remove(); add('sys', '连接失败：' + e); }
   finally { send.disabled = false; q.focus(); }
 }
@@ -101,7 +142,8 @@ send.onclick = ask;
 document.getElementById('reset').onclick = async () => {
   await fetch('/api/reset', { method:'POST', headers:{'Content-Type':'application/json'},
     body: JSON.stringify({ sid }) });
-  log.innerHTML = ''; add('sys', '记录已清空。');
+  log.innerHTML = ''; banner.style.display = 'none'; bars.innerHTML = '';
+  add('sys', '时间线已重置。第十二次轮回开始——或者，是第十三次。');
 };
 q.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); ask(); } });
 </script>
@@ -162,14 +204,26 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(429, {"error": f"今日额度已用完（{DAILY_LIMIT} 条），请明天再来。"})
             _counter["n"] += 1
 
+        session = _sessions.get(sid) or {}
+        history = session.get("history")
+        state = session.get("state") or (game.new_state() if GAME_MODE else None)
+
         try:
-            answer, history = run_agent(message, history=_sessions.get(sid), return_history=True)
+            if GAME_MODE:
+                result = game.chat(message, history=history, state=state)
+                answer, history, state = result["answer"], result["history"], result["state"]
+                snapshot = dict(state, max_turns=game.MAX_TURNS)
+                ending_title, ending_tagline = result["ending_title"], result["ending_tagline"]
+            else:
+                answer, history = run_agent(message, history=history, return_history=True)
+                snapshot, ending_title, ending_tagline = None, "", ""
         except Exception as e:
             return self._json(500, {"error": f"服务端错误：{e.__class__.__name__}: {e}"})
 
         with _lock:
-            _sessions[sid] = history[-40:]   # 只留最近 20 轮，控制上下文长度与花费
-        self._json(200, {"answer": answer})
+            _sessions[sid] = {"history": history[-60:], "state": state}   # 控制上下文长度与花费
+        self._json(200, {"answer": answer, "state": snapshot,
+                         "ending_title": ending_title, "ending_tagline": ending_tagline})
 
     def log_message(self, fmt, *args):
         print("[%s] %s" % (self.address_string(), re.sub(r"\s+", " ", fmt % args)))
@@ -189,7 +243,7 @@ def lan_ip() -> str:
 if __name__ == "__main__":
     ip = lan_ip()
     print("=" * 58)
-    print("孵化者 · 契约终端 已启动")
+    print("孵化者 · 契约终端 已启动" + ("（结局玩法：开）" if GAME_MODE else "（纯聊天模式）"))
     print(f"  本机访问：   http://127.0.0.1:{PORT}")
     print(f"  同 WiFi 同学：http://{ip}:{PORT}")
     print(f"  访问口令：   {PASSWORD if PASSWORD else '（未设置，任何人都能连）'}")
