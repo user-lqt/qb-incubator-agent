@@ -123,6 +123,18 @@ KEYWORDS = [
 
 DECAY = {"contract": 0, "suspicion": 0, "despair": -2, "resistance": -2}   # 每轮自然回落
 
+# 「被劝着签/转」不等于「自己同意」：先把这类从句剥掉再做签约判定，
+# 否则「你为什么一直劝我签约」会被误判成"我签约"而立刻触发 E_SIGN。
+PERSUADE_CLAUSE = re.compile(
+    r"[^。！？；\n]*(?:劝|让|叫|逼|骗|催促|要求|希望|建议)[^。！？；\n]*?(?:签|转)[^。！？；\n]*"
+)
+
+# 需要在这种"剥离后的文本"上匹配的关键词（其余关键词仍看原文）
+STRICT_PATTERNS = (
+    r"(我签|我签了|我签约|签吧|签?一个|我愿意|成交|就这么定了)",
+    r"(我转|我要转专业|我决定转|转专业去土木|转土木|改选土木|选土木)",
+)
+
 
 # ---------------------------------------------------------------- 状态对象
 
@@ -164,8 +176,10 @@ def update_state(state: dict, text: str) -> dict:
     for k, v in DECAY.items():
         state[k] = state.get(k, 0) + v
     flags = set(state.get("flags") or [])
+    strict_text = PERSUADE_CLAUSE.sub(" ", text)
     for pattern, delta, flag in KEYWORDS:
-        if re.search(pattern, text, re.I):
+        haystack = strict_text if pattern in STRICT_PATTERNS else text
+        if re.search(pattern, haystack, re.I):
             for key, value in delta.items():
                 if key == "reform":
                     state["reform"] = state.get("reform", 0) + value

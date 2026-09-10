@@ -88,6 +88,21 @@ def main():
     update_state(state, "土木的课程难吗")
     assert state["limit"] == HARD_CAP, f"硬顶失效：limit={state['limit']}"
 
+    # 误判回归：「被劝着签/转」不能算作自己签约
+    for line in ["你为什么一直劝我签约", "学长让我转专业，我很犹豫", "父母想让我签约那种契约"]:
+        state = new_state()
+        state["turn"] = 1
+        update_state(state, line)
+        assert check_ending(state) == "", f"「{line}」被误判为签约：{check_ending(state)}"
+        assert "signed" not in state["flags"], f"「{line}」错误地写入了 signed 标记"
+
+    # 真正的表态仍然算数
+    for line in ["我签！", "我愿意签约", "我决定转专业去土木"]:
+        state = new_state()
+        state["turn"] = 1
+        update_state(state, line)
+        assert check_ending(state) == "E_SIGN", f"「{line}」未被识别为签约"
+
     if failures:
         print(f"\n{len(failures)} 条不通过：{failures}")
         return 1

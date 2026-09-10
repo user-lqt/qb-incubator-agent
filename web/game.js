@@ -75,6 +75,13 @@ const KEYWORDS = [
 
 const DECAY = { despair: -2, resistance: -2 };
 
+// 「被劝着签/转」不等于「自己同意」：先剥掉这类从句再做签约判定，
+// 否则「你为什么一直劝我签约」会被误判成"我签约"而立刻触发 E_SIGN。
+const PERSUADE_CLAUSE = /[^。！？；\n]*(?:劝|让|叫|逼|骗|催促|要求|希望|建议)[^。！？；\n]*?(?:签|转)[^。！？；\n]*/g;
+
+// 需要在这种"剥离后的文本"上匹配的关键词（其余关键词仍看原文）
+const STRICT_MARKERS = ["我签", "我转"];
+
 export function newState() {
   return {
     contract: 0, suspicion: 0, despair: 0, resistance: 0, reform: 0, turn: 0,
@@ -106,8 +113,10 @@ export function updateState(state, text = "") {
 
   for (const [k, v] of Object.entries(DECAY)) state[k] = (state[k] || 0) + v;
   const flags = new Set(state.flags || []);
+  const strictText = String(text).replace(PERSUADE_CLAUSE, " ");
   for (const [re, delta, flag] of KEYWORDS) {
-    if (!re.test(text)) continue;
+    const strict = STRICT_MARKERS.some((m) => re.source.includes(m));
+    if (!re.test(strict ? strictText : text)) continue;
     for (const [k, v] of Object.entries(delta)) {
       if (k === "reform") state.reform = (state.reform || 0) + v;
       else state[k] = (state[k] || 0) + v;

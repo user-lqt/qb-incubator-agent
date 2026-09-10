@@ -66,5 +66,19 @@ const s6 = { ...newState(), limit: HARD_CAP, turn: HARD_CAP };
 updateState(s6, "土木的课程难吗");
 if (s6.limit !== HARD_CAP) { console.log(`FAIL 硬顶失效：limit=${s6.limit}`); failed += 1; }
 
+// 误判回归：「被劝着签/转」不能算作自己签约
+for (const line of ["你为什么一直劝我签约", "学长让我转专业，我很犹豫", "父母想让我签约那种契约"]) {
+  const st = { ...newState(), turn: 1 };
+  updateState(st, line);
+  if (checkEnding(st) || st.flags.includes("signed")) {
+    console.log(`FAIL 「${line}」被误判为签约`); failed += 1;
+  }
+}
+for (const line of ["我签！", "我愿意签约", "我决定转专业去土木"]) {
+  const st = { ...newState(), turn: 1 };
+  updateState(st, line);
+  if (checkEnding(st) !== "E_SIGN") { console.log(`FAIL 「${line}」未被识别为签约`); failed += 1; }
+}
+
 console.log(failed ? `\n${failed} 条不通过` : `\n全部 ${Object.keys(CASES).length} 条结局判定 + 动态轮数断言通过（JS 版）`);
 process.exit(failed ? 1 : 0);
