@@ -64,8 +64,7 @@
 </head>
 <body>
 <header>
-  <img class="avatar" id="avatar" src="./qb.png" alt="孵化者"
-       onerror="this.onerror=null;this.src='./qb.svg';">
+  <img class="avatar" id="avatar" src="./qb.png" alt="孵化者">
   <b>孵化者 QB</b>
   <input id="key" type="password" placeholder="DeepSeek API key（sk-…）" autocomplete="off">
   <select id="model">
@@ -99,15 +98,25 @@ const log = $("log"), keyInput = $("key"), modelSelect = $("model");
 
 let client = null;
 
-const AVATAR_SRC = "./qb.png";   // 放了自己的 qb.png 就自动用它，否则回退内置 qb.svg
+// 头像加载链：优先 qb.png（可自行替换），再试 qb.jpg，最后回退内置矢量图 qb.svg
+const AVATAR_CHAIN = ["./qb.png", "./qb.jpg", "./qb.svg"];
 
-function avatarImg(cls) {
+function wireAvatar(img) {
+  let i = 0;
+  img.onerror = () => {
+    i += 1;
+    if (i < AVATAR_CHAIN.length) img.src = AVATAR_CHAIN[i];
+    else img.onerror = null;
+  };
+  img.src = AVATAR_CHAIN[i];
+  return img;
+}
+
+function avatarImg() {
   const img = document.createElement("img");
   img.className = "avatar";
   img.alt = "孵化者";
-  img.src = AVATAR_SRC;
-  img.onerror = () => { img.onerror = null; img.src = "./qb.svg"; };
-  return img;
+  return wireAvatar(img);
 }
 
 function add(cls, text) {
@@ -232,6 +241,7 @@ modelSelect.addEventListener("change", () => {
 });
 client = buildClient();
 refreshKeyState();
+wireAvatar($("avatar"));
 
 // 开场：世界观序章 + 上手提示（序章文本来自 game.js，与命令行版同源）
 add("qb", PROLOGUE);
