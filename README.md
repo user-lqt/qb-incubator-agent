@@ -32,7 +32,7 @@ QB：嗯——先说结论。明天不适合赶工期，但它是一个可以连
 | 📰 **行业动态** | 微电子/半导体行业展望：中文检索 + 国外行业媒体 RSS（SemiEngineering / EE Times / IEEE Spectrum / EEJournal） |
 | 🧮 **数学计算** | 安全沙箱内的表达式求值（禁用 `__builtins__`） |
 | 🎭 **人设可插拔** | 全部人设写在 `persona.py`，换角色不用碰任何代码（前端由脚本同步） |
-| 🎮 **结局玩法** | 12 轮对局 + 四个隐藏维度 + **六个结局**，终端每轮显示状态、结局打印横幅 |
+| 🎮 **结局玩法** | 动态轮数（16 起，可延长至 64）+ 四个隐藏维度 + **六个结局**，终端每轮显示状态、结局打印横幅 |
 | 🌐 **在线试玩（纯前端）** | `web/` 是一份零后端静态页：访客填自己的 key，浏览器直连模型，GitHub Pages 直接托管 |
 | 🔑 **不打包密钥** | `.env` 已被 gitignore，仓库里只有 `.env.example`；前端 key 只存访客浏览器 |
 
@@ -82,14 +82,14 @@ git clone https://github.com/user-lqt/qb-incubator-agent.git
 cd qb-incubator-agent
 pip install -r requirements.txt
 cp .env.example .env          # 填入自己的 DEEPSEEK_API_KEY
-python agent.py --game        # 直接开一局：12 轮、六个结局
+python agent.py --game        # 直接开一局：动态轮数、六个结局
 ```
 
 ### 两个版本的能力对照
 
 | 能力 | 纯前端（`web/`） | Python 版 |
 |---|---|---|
-| 12 轮对局 / 六结局 / 状态条 | ✅ | ✅ |
+| 动态轮数对局 / 六结局 / 状态条 | ✅ | ✅ |
 | 天气（含 1~7 天预报，真实数据） | ✅ | ✅ |
 | IP 定位（多源交叉 + 坐标直查） | ✅ | ✅ |
 | 英文科技资讯检索（Hacker News） | ✅ | — |
