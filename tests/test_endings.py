@@ -96,6 +96,34 @@ def main():
         assert check_ending(state) == "", f"「{line}」被误判为签约：{check_ending(state)}"
         assert "signed" not in state["flags"], f"「{line}」错误地写入了 signed 标记"
 
+    # 识别准确性回归：否定句、泛化词、贬土木、无关声明
+    ACCURACY = [
+        ("我不愿意签约", set()),
+        ("我不喜欢工地", set()),
+        ("我怕", {"despair"}),
+        ("我不怕，土木挺好的", {"contract"}),
+        ("土木是什么东西", {"contract"}),
+        ("你是什么东西", {"suspicion"}),
+        ("我想学新能源", set()),
+        ("我怕以后失业，但土木是垃圾", {"despair", "resistance"}),
+        ("我学数据结构，跟土木无关", set()),
+        ("我还没想清楚", set()),
+        ("别劝了，我不签", {"resistance"}),
+    ]
+    for text, expect in ACCURACY:
+        st = new_state()
+        st["turn"] = 1
+        update_state(st, text)
+        changed = {k for k in ("contract", "suspicion", "despair", "resistance") if st[k] != 0}
+        assert changed == expect, f"识别不准：「{text}」期望 {sorted(expect)} 实际 {sorted(changed)}"
+        assert "signed" not in st["flags"], f"「{text}」不该被判为已签约"
+
+    # 敏感度回归：正向表达要有明显提升
+    st = new_state()
+    st["turn"] = 1
+    update_state(st, "土木怎么样？我想了解一下就业方向")
+    assert st["contract"] >= 15, f"好感权重过小：contract={st['contract']}"
+
     # 真正的表态仍然算数
     for line in ["我签！", "我愿意签约", "我决定转专业去土木"]:
         state = new_state()

@@ -80,6 +80,36 @@ for (const line of ["我签！", "我愿意签约", "我决定转专业去土木
   if (checkEnding(st) !== "E_SIGN") { console.log(`FAIL 「${line}」未被识别为签约`); failed += 1; }
 }
 
+// 识别准确性回归：否定句、泛化词、贬土木、无关声明
+const ACCURACY = [
+  ["我不愿意签约", []],
+  ["我不喜欢工地", []],
+  ["我怕", ["despair"]],
+  ["我不怕，土木挺好的", ["contract"]],
+  ["土木是什么东西", ["contract"]],
+  ["你是什么东西", ["suspicion"]],
+  ["我想学新能源", []],
+  ["我怕以后失业，但土木是垃圾", ["despair", "resistance"]],
+  ["我学数据结构，跟土木无关", []],
+  ["我还没想清楚", []],
+  ["别劝了，我不签", ["resistance"]],
+];
+for (const [text, expect] of ACCURACY) {
+  const st = { ...newState(), turn: 1 };
+  updateState(st, text);
+  const changed = ["contract", "suspicion", "despair", "resistance"].filter((k) => st[k] !== 0).sort();
+  const want = [...expect].sort();
+  if (JSON.stringify(changed) !== JSON.stringify(want)) {
+    console.log(`FAIL 识别不准：「${text}」期望 ${want} 实际 ${changed}`); failed += 1;
+  }
+  if (st.flags.includes("signed")) { console.log(`FAIL 「${text}」被判为已签约`); failed += 1; }
+}
+
+// 敏感度回归
+const sens = { ...newState(), turn: 1 };
+updateState(sens, "土木怎么样？我想了解一下就业方向");
+if (sens.contract < 15) { console.log(`FAIL 好感权重过小：contract=${sens.contract}`); failed += 1; }
+
 // describeDelta：界面上的"本轮变化"提示
 const before = { ...newState(), turn: 1 };
 const after = { ...before, turn: 2, contract: 7, suspicion: 0 };

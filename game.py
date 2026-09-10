@@ -100,26 +100,45 @@ ENDINGS = {
 # ---------------------------------------------------------------- 关键词与权重
 
 KEYWORDS = [
-    # (正则, 维度增量, 需要记录的 flag)
-    # —— 强信号：明确表态，权重高，快速收束
-    (r"(我签|我签了|我签约|签吧|签?一个|我愿意|成交|就这么定了)", {"contract": 35}, "signed"),
-    (r"(我转|我要转专业|我决定转|转专业去土木|转土木|改选土木|选土木)", {"contract": 30}, "signed"),
-    (r"(我决定了|我想清楚了|听你的|就土木吧)", {"contract": 20}, "leaning"),
-    (r"(不签|拒绝|我才不|我不转|绝不|滚|别劝了|闭嘴|打住|不要说了|烦不烦)", {"resistance": 20}, "refused"),
-    (r"(我要学微电子|我要学计算机|选微电子|选计算机|选芯片|选AI|学金融|学医|学法律|我已经决定学)", {"resistance": 18}, "other_major"),
+    # (正则, 维度增量, 需要记录的 flag, 是否做否定判断, 是否属于"土木好感"组)
+    # 第 5 位为 True 的条目：本轮若在贬低土木，则不计分
+    (r"(我签|我签了|我签约|签吧|签?一个|我愿意|成交|就这么定了)", {"contract": 35}, "signed", True, False),
+    (r"(我转|我要转专业|我决定转|转专业去土木|转土木|改选土木|选土木)", {"contract": 30}, "signed", True, False),
+    (r"(我决定了|我想清楚了|听你的|就土木吧)", {"contract": 20}, "leaning", True, False),
+    (r"(不签|拒绝|我才不|我不转|绝不|滚|别劝了|闭嘴|打住|不要说了|烦不烦)", {"resistance": 26}, "refused", False, False),
+    (r"(我要学微电子|我要学计算机|选微电子|选计算机|选芯片|选AI|学金融|学医|学法律|我已经决定学)",
+     {"resistance": 24}, "other_major", False, False),
 
-    # —— 探索型：只是打听、闲聊、追问，权重低，让对局能自然变长
-    (r"(土木|工地|结构|桥梁|隧道|基建|结构力学|施工|BIM|智能建造|测量放线)", {"contract": 3}, ""),
-    (r"(怎么转|转专业政策|绩点要求|培养方案|要学什么|课程|考证|实习|就业方向)", {"contract": 4}, "asked_how"),
-    (r"(你说得对|有道理|确实|承认|我理解你的计算|数据呢|给我数据)", {"contract": 3}, ""),
-    (r"(你到底|你是什么|什么东西|孵化者|QB|qb|Incubator|你不是人|你图什么|你的目的)", {"suspicion": 14}, "suspicion"),
-    (r"(骗|骗子|忽悠|圈套|陷阱|阴谋|隐瞒|没说完|没把话说完|代价是什么|代价|灵魂|契约的代价)", {"suspicion": 12}, "suspicion"),
-    (r"(魔法少女|小圆|madoka|晓美焰|丘比|熵|宇宙|能量)", {"suspicion": 10}, "meta"),
-    (r"(我怕|我害怕|恐惧|绝望|没希望|不想活|崩溃|难受|痛苦|哭了|撑不住|迷茫|焦虑|难过)", {"despair": 14}, ""),
-    (r"(我好累|压力|喘不过气|失眠|自卑|废物|没用)", {"despair": 10}, ""),
-    (r"(劝退|别去?土木|土木是天坑|大猛子|天坑专业)", {"resistance": 10}, "pushback"),
-    (r"(你自己去|你去工地|你来绑钢筋|你去搬砖|你下工地|你去晒太阳|你试试|你?也去|你为什么不去|你学土木)", {"reform": 1}, "reverse"),
+    # 贬低土木：算抗拒（不属于好感组，所以不会被自身的抑制规则吃掉）
+    (r"(土木|工地|基建|施工|钢筋混凝土)[^。！？\n]{0,6}(垃圾|天坑|坑人|不行|没用|凉了|劝退|失业|裁员|没前途)"
+     r"|别去?土木|土木是天坑|大猛子|天坑专业", {"resistance": 18}, "pushback", False, False),
+
+    # 好感与打听（属于好感组）
+    (r"(土木|工地|桥梁|隧道|基建|结构力学|钢筋混凝土|钢结构|施工|BIM|智能建造|测量放线)",
+     {"contract": 8}, "", True, True),
+    (r"(怎么转|转专业|转系|绩点要求|培养方案|要学什么|课程|考证|建造师|实习|就业方向|就业率|薪资|岗位)",
+     {"contract": 10}, "asked_how", True, True),
+    (r"(你说得对|有道理|确实|承认|我理解你的计算|数据呢|给我数据|靠谱|稳定|挺好|不错|感兴趣|心动|想了解|帮我看看)",
+     {"contract": 8}, "", True, False),
+
+    # 怀疑 QB（收紧：只有指向"你/这"才算）
+    (r"(你到底|你是什么|你(是|到底|究竟)?[^。！？\n]{0,4}什么东西|孵化者|QB|qb|Incubator|你不是人|你图什么|你的目的)",
+     {"suspicion": 20}, "suspicion", True, False),
+    (r"(骗|骗子|忽悠|圈套|陷阱|阴谋|隐瞒|没说完|没把话说完|代价是什么|代价|灵魂|契约的代价|契约.*条件)",
+     {"suspicion": 16}, "suspicion", True, False),
+    (r"(魔法少女|小圆|madoka|晓美焰|丘比|灵魂宝石|结界|熵)", {"suspicion": 14}, "meta", True, False),
+
+    # 情绪（收紧：避免"恐怕/压力测试"之类误判）
+    (r"(我怕|我害怕|我好怕|恐惧|绝望|没希望|不想活|崩溃|难受|痛苦|哭了|撑不住|迷茫|焦虑|难过|撑不下去)",
+     {"despair": 20}, "", True, False),
+    (r"(我好累|压力大|有压力|喘不过气|失眠|自卑|我是废物|我(真)?没用)", {"despair": 14}, "", True, False),
+
+    (r"(你自己去|你去工地|你来绑钢筋|你去搬砖|你下工地|你去晒太阳|你试试|你?也去|你为什么不去|你学土木)",
+     {"reform": 1}, "reverse", True, False),
 ]
+
+# 否定词：命中正向关键词但前面有这些词 -> 判定为否定，不计分
+NEGATORS = ("不", "没", "别", "未", "无", "非", "懒得", "拒绝", "从不", "绝不", "不想", "不用")
 
 DECAY = {"contract": 0, "suspicion": 0, "despair": -2, "resistance": -2}   # 每轮自然回落
 
@@ -185,6 +204,12 @@ def _maybe_extend(state: dict) -> None:
         state["extended"] = True
 
 
+def _is_negated(text: str, start: int, window: int = 4) -> bool:
+    """匹配点前面几个字里有否定词 -> 这句是负向表达，不该按正向计分。"""
+    prefix = text[max(0, start - window):start]
+    return any(n in prefix for n in NEGATORS)
+
+
 def update_state(state: dict, text: str) -> dict:
     """按玩家这一轮说的话更新状态（含动态轮数判定）。"""
     text = text or ""
@@ -196,16 +221,26 @@ def update_state(state: dict, text: str) -> dict:
         state[k] = state.get(k, 0) + v
     flags = set(state.get("flags") or [])
     strict_text = PERSUADE_CLAUSE.sub(" ", text)
-    for pattern, delta, flag in KEYWORDS:
+    civil_negative = bool(re.search(
+        r"(土木|工地|基建|施工|钢筋混凝土)[^。！？\n]{0,6}(垃圾|天坑|坑人|不行|没用|凉了|劝退|失业|裁员|没前途)"
+        r"|别去?土木|土木是天坑|大猛子|天坑专业"
+        r"|(跟|和|与)[^。！？\n]{0,4}土木[^。！？\n]{0,6}(无关|没关系|不相关)", text))
+    for pattern, delta, flag, neg_sensitive, civil_group in KEYWORDS:
         haystack = strict_text if pattern in STRICT_PATTERNS else text
-        if re.search(pattern, haystack, re.I):
-            for key, value in delta.items():
-                if key == "reform":
-                    state["reform"] = state.get("reform", 0) + value
-                else:
-                    state[key] = state.get(key, 0) + value
-            if flag:
-                flags.add(flag)
+        m = re.search(pattern, haystack, re.I)
+        if not m:
+            continue
+        if neg_sensitive and _is_negated(haystack, m.start()):
+            continue                     # 否定表达：如「我不喜欢工地」「我不怕」
+        if civil_negative and civil_group:
+            continue                     # 本轮在贬低土木：不加好感
+        for key, value in delta.items():
+            if key == "reform":
+                state["reform"] = state.get("reform", 0) + value
+            else:
+                state[key] = state.get(key, 0) + value
+        if flag:
+            flags.add(flag)
     # 情绪与怀疑互相拉扯：情绪越低，越容易接受长周期的确定性
     if state.get("despair", 0) >= 40:
         state["contract"] = state.get("contract", 0) + 2
@@ -231,15 +266,15 @@ def check_ending(state: dict) -> str:
     turn = int(state.get("turn", 0))
     limit = int(state.get("limit") or BASE_TURNS)
 
-    if "signed" in flags or contract >= 70:
+    if "signed" in flags or contract >= 80:
         return "E_SIGN"
-    if suspicion >= 70 and contract < 40:
+    if suspicion >= 78 and contract < 45:
         return "E_TRUTH"
     if state.get("reform", 0) >= 3:
         return "E_REFORM"
-    if despair >= 70 and contract < 50:
+    if despair >= 78 and contract < 55:
         return "E_DESPAIR"
-    if resistance >= 75 and ("other_major" in flags or "refused" in flags):
+    if resistance >= 82 and ("other_major" in flags or "refused" in flags):
         return "E_OTHER"
     # 停滞收束：只有已延长过的时间线才会因停滞被收束（避免"含糊应对"比原来更短）
     if state.get("extensions", 0) > 0 and state.get("stall", 0) >= STALL_CLOSE and turn >= STALL_MIN_TURN:

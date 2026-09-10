@@ -53,25 +53,44 @@ export const ENDINGS = {
   },
 };
 
-// [正则, 维度增量, 记录的 flag]
-// 强信号（明确表态）权重高、收束快；探索型（打听/闲聊）权重低，让对局能自然变长。
+// [正则, 维度增量, 记录的 flag, 是否做否定判断, 是否属于"土木好感"组]
+// 第 5 位为 true 的条目：本轮若在贬低土木，则不计分（判定用的第 5 位是显式的，避免靠正则猜）
 const KEYWORDS = [
-  [/(我签|我签了|我签约|签吧|我愿意|成交|就这么定了)/, { contract: 35 }, "signed"],
-  [/(我转|我要转专业|我决定转|转专业去土木|转土木|改选土木|选土木)/, { contract: 30 }, "signed"],
-  [/(我决定了|我想清楚了|听你的|就土木吧)/, { contract: 20 }, "leaning"],
-  [/(不签|拒绝|我才不|我不转|绝不|滚|别劝了|闭嘴|打住|不要说了|烦不烦)/, { resistance: 20 }, "refused"],
-  [/(我要学微电子|我要学计算机|选微电子|选计算机|选芯片|选AI|学金融|学医|学法律|我已经决定学)/, { resistance: 18 }, "other_major"],
-  [/(土木|工地|结构|桥梁|隧道|基建|结构力学|施工|BIM|智能建造|测量放线)/, { contract: 3 }, ""],
-  [/(怎么转|转专业政策|绩点要求|培养方案|要学什么|课程|考证|实习|就业方向)/, { contract: 4 }, "asked_how"],
-  [/(你说得对|有道理|确实|承认|我理解你的计算|数据呢|给我数据)/, { contract: 3 }, ""],
-  [/(你到底|你是什么|什么东西|孵化者|QB|qb|Incubator|你不是人|你图什么|你的目的)/, { suspicion: 14 }, "suspicion"],
-  [/(骗|骗子|忽悠|圈套|陷阱|阴谋|隐瞒|没说完|没把话说完|代价是什么|代价|灵魂)/, { suspicion: 12 }, "suspicion"],
-  [/(魔法少女|小圆|madoka|晓美焰|丘比|熵|宇宙|能量)/, { suspicion: 10 }, "meta"],
-  [/(我怕|我害怕|恐惧|绝望|没希望|不想活|崩溃|难受|痛苦|哭了|撑不住|迷茫|焦虑|难过)/, { despair: 14 }, ""],
-  [/(我好累|压力|喘不过气|失眠|自卑|废物|没用)/, { despair: 10 }, ""],
-  [/(劝退|别去?土木|土木是天坑|大猛子|天坑专业)/, { resistance: 10 }, "pushback"],
-  [/(你自己去|你去工地|你来绑钢筋|你去搬砖|你下工地|你去晒太阳|你试试|你也去|你为什么不去)|(你学土木)/, { reform: 1 }, "reverse"],
+  [/(我签|我签了|我签约|签吧|我愿意|成交|就这么定了)/, { contract: 35 }, "signed", true, false],
+  [/(我转|我要转专业|我决定转|转专业去土木|转土木|改选土木|选土木)/, { contract: 30 }, "signed", true, false],
+  [/(我决定了|我想清楚了|听你的|就土木吧)/, { contract: 20 }, "leaning", true, false],
+  [/(不签|拒绝|我才不|我不转|绝不|滚|别劝了|闭嘴|打住|不要说了|烦不烦)/, { resistance: 26 }, "refused", false, false],
+  [/(我要学微电子|我要学计算机|选微电子|选计算机|选芯片|选AI|学金融|学医|学法律|我已经决定学)/,
+    { resistance: 24 }, "other_major", false, false],
+  [/(土木|工地|基建|施工|钢筋混凝土)[^。！？\n]{0,6}(垃圾|天坑|坑人|不行|没用|凉了|劝退|失业|裁员|没前途)|别去?土木|土木是天坑|大猛子|天坑专业/,
+    { resistance: 18 }, "pushback", false, false],
+  [/(土木|工地|桥梁|隧道|基建|结构力学|钢筋混凝土|钢结构|施工|BIM|智能建造|测量放线)/,
+    { contract: 8 }, "", true, true],
+  [/(怎么转|转专业|转系|绩点要求|培养方案|要学什么|课程|考证|建造师|实习|就业方向|就业率|薪资|岗位)/,
+    { contract: 10 }, "asked_how", true, true],
+  [/(你说得对|有道理|确实|承认|我理解你的计算|数据呢|给我数据|靠谱|稳定|挺好|不错|感兴趣|心动|想了解|帮我看看)/,
+    { contract: 8 }, "", true, false],
+  [/(你到底|你是什么|你(是|到底|究竟)?[^。！？\n]{0,4}什么东西|孵化者|QB|qb|Incubator|你不是人|你图什么|你的目的)/,
+    { suspicion: 20 }, "suspicion", true, false],
+  [/(骗|骗子|忽悠|圈套|陷阱|阴谋|隐瞒|没说完|没把话说完|代价是什么|代价|灵魂|契约的代价|契约.*条件)/,
+    { suspicion: 16 }, "suspicion", true, false],
+  [/(魔法少女|小圆|madoka|晓美焰|丘比|灵魂宝石|结界|熵)/, { suspicion: 14 }, "meta", true, false],
+  [/(我怕|我害怕|我好怕|恐惧|绝望|没希望|不想活|崩溃|难受|痛苦|哭了|撑不住|迷茫|焦虑|难过|撑不下去)/,
+    { despair: 20 }, "", true, false],
+  [/(我好累|压力大|有压力|喘不过气|失眠|自卑|我是废物|我(真)?没用)/, { despair: 14 }, "", true, false],
+  [/(你自己去|你去工地|你来绑钢筋|你去搬砖|你下工地|你去晒太阳|你试试|你也去|你为什么不去)|(你学土木)/,
+    { reform: 1 }, "reverse", true, false],
 ];
+
+// 否定词：命中正向关键词但前面有这些词 -> 判定为否定，不计分
+const NEGATORS = ["不", "没", "别", "未", "无", "非", "懒得", "拒绝", "从不", "绝不", "不想", "不用"];
+
+const CIVIL_NEGATIVE = /(土木|工地|基建|施工|钢筋混凝土)[^。！？\n]{0,6}(垃圾|天坑|坑人|不行|没用|凉了|劝退|失业|裁员|没前途)|别去?土木|土木是天坑|大猛子|天坑专业|(跟|和|与)[^。！？\n]{0,4}土木[^。！？\n]{0,6}(无关|没关系|不相关)/;
+
+function isNegated(text, start, window = 4) {
+  const prefix = text.slice(Math.max(0, start - window), start);
+  return NEGATORS.some((n) => prefix.includes(n));
+}
 
 // 开场世界观序章（与 game.py 的 PROLOGUE 保持一致）
 export const PROLOGUE = `嗯——僕先说明僕是什么。
@@ -133,9 +152,14 @@ export function updateState(state, text = "") {
   for (const [k, v] of Object.entries(DECAY)) state[k] = (state[k] || 0) + v;
   const flags = new Set(state.flags || []);
   const strictText = String(text).replace(PERSUADE_CLAUSE, " ");
-  for (const [re, delta, flag] of KEYWORDS) {
+  const civilNegative = CIVIL_NEGATIVE.test(text);
+  for (const [re, delta, flag, negSensitive, civilGroup] of KEYWORDS) {
     const strict = STRICT_MARKERS.some((m) => re.source.includes(m));
-    if (!re.test(strict ? strictText : text)) continue;
+    const haystack = strict ? strictText : String(text);
+    const m = re.exec(haystack);
+    if (!m) continue;
+    if (negSensitive && isNegated(haystack, m.index)) continue;      // 否定表达不计分
+    if (civilNegative && civilGroup) continue;                       // 本轮在贬低土木：不加好感
     for (const [k, v] of Object.entries(delta)) {
       if (k === "reform") state.reform = (state.reform || 0) + v;
       else state[k] = (state[k] || 0) + v;
@@ -161,11 +185,11 @@ export function checkEnding(state) {
   const { contract = 0, suspicion = 0, despair = 0, resistance = 0 } = state;
   const turn = state.turn || 0;
   const limit = state.limit || BASE_TURNS;
-  if (f.has("signed") || contract >= 70) return "E_SIGN";
-  if (suspicion >= 70 && contract < 40) return "E_TRUTH";
+  if (f.has("signed") || contract >= 80) return "E_SIGN";
+  if (suspicion >= 78 && contract < 45) return "E_TRUTH";
   if ((state.reform || 0) >= 3) return "E_REFORM";
-  if (despair >= 70 && contract < 50) return "E_DESPAIR";
-  if (resistance >= 75 && (f.has("other_major") || f.has("refused"))) return "E_OTHER";
+  if (despair >= 78 && contract < 55) return "E_DESPAIR";
+  if (resistance >= 82 && (f.has("other_major") || f.has("refused"))) return "E_OTHER";
   // 停滞收束只发生在“已延长过”的时间线里，避免含糊应对比基础上限更短
   if ((state.extensions || 0) > 0 && (state.stall || 0) >= STALL_CLOSE && turn >= STALL_MIN_TURN) {
     return "E_TIMELINE";
