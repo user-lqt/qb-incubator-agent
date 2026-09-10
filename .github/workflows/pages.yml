@@ -25,7 +25,7 @@ jobs:
     name: 前端语法与状态机测试
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
@@ -44,8 +44,11 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: actions/configure-pages@v5
+        with:
+          # 若仓库尚未启用 Pages，则由本步骤自动启用（build_type=workflow）
+          enablement: true
       - uses: actions/upload-pages-artifact@v3
         with:
           path: web
