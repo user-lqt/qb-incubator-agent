@@ -32,6 +32,10 @@
            border:1px solid #ecd9e2; border-radius:8px; padding:6px 11px; color:#7b6270;
            font-size:13px; background:#fff; white-space:nowrap; }
   .ghbtn:hover { background:#fff0f6; color:#b3356b; border-color:var(--pink); }
+  .ghbtn.star { border-color:#ffd9e6; color:#a8356b; }
+  .ghbtn.star b { font-variant-numeric:tabular-nums; }
+  .starcall { margin-top:8px; }
+  .starcall a { color:#b3356b; font-weight:600; }
   #keyState { font-size:12px; padding:4px 9px; border-radius:999px; background:#f3e8ee; color:#7b6270; white-space:nowrap; }
   #keyState.ok { background:#e8f7ee; color:#1f7a45; }
   #keyState.bad { background:#fff0f6; color:#b3356b; }
@@ -114,6 +118,9 @@
   <button id="save">保存 key</button>
   <a class="ghbtn" href="https://github.com/user-lqt/qb-incubator-agent"
      target="_blank" rel="noopener">⌂ 源码仓库</a>
+  <a class="ghbtn star" id="starBtn" title="给这个仓库点个 Star"
+     href="https://github.com/user-lqt/qb-incubator-agent"
+     target="_blank" rel="noopener">★ Star <b id="starCount">·</b></a>
 </header>
 
 <div id="bars"></div>
@@ -232,6 +239,36 @@ function showEnding(title, tagline) {
   const banner = $("banner");
   banner.style.display = "block";
   banner.innerHTML = `<b>结局：${title}</b>${tagline || ""}<br>点「重新开始」可开启下一条时间线。`;
+  // 签约结局的彩蛋：QB 亲自要一枚星标作为见证
+  if (title.includes("契约成立")) {
+    const call = document.createElement("div");
+    call.className = "starcall";
+    call.innerHTML = '僕需要一个见证：<a href="https://github.com/user-lqt/qb-incubator-agent"'
+      + ' target="_blank" rel="noopener">给这条时间线的仓库点一枚 ★ Star</a>'
+      + '。这在计算上更高效——比记住君容易。';
+    banner.appendChild(call);
+  }
+}
+
+// 实时星标数：GitHub API（匿名 60 次/小时），本地缓存 10 分钟避免打爆限额
+const STAR_API = "https://api.github.com/repos/user-lqt/qb-incubator-agent";
+async function loadStars() {
+  const el = $("starCount");
+  if (!el) return;
+  try {
+    const cached = JSON.parse(localStorage.getItem("qb_stars") || "null");
+    if (cached && Date.now() - cached.at < 10 * 60 * 1000) { el.textContent = cached.n; return; }
+    const res = await fetch(STAR_API, { headers: { Accept: "application/vnd.github+json" } });
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    const data = await res.json();
+    const n = Number(data.stargazers_count) || 0;
+    el.textContent = n;
+    localStorage.setItem("qb_stars", JSON.stringify({ n, at: Date.now() }));
+  } catch {
+    // 限额 / 断网 / file:// 打开时：换成 shields.io 静态徽章图，仍然显示星标数
+    el.outerHTML = '<img alt="GitHub stars" height="18" style="vertical-align:middle"'
+      + ' src="https://img.shields.io/github/stars/user-lqt/qb-incubator-agent?style=flat-square&color=ff9ec7">';
+  }
 }
 
 function buildClient() {
@@ -325,6 +362,7 @@ client = buildClient();
 refreshKeyState();
 wireAvatar($("avatar"));
 renderBars(emptyState());   // 进页面就显示四条状态，别等第一次提问才出现
+loadStars();                // 取一次星标数（有缓存，失败就静默降级）
 
 // 开场：世界观序章 + 上手提示（序章文本来自 game.js，与命令行版同源）
 add("qb", PROLOGUE);

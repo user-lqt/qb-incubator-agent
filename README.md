@@ -3,6 +3,7 @@
 [![CI](https://github.com/user-lqt/qb-incubator-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/user-lqt/qb-incubator-agent/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-pink.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org/)
+[![GitHub stars](https://img.shields.io/github/stars/user-lqt/qb-incubator-agent?style=social)](https://github.com/user-lqt/qb-incubator-agent)
 
 > 「和我签订契约，成为土木少女吧。」
 
@@ -268,8 +269,10 @@ CI（GitHub Actions）会在 Python 3.10 / 3.12 上跑：模块导入自检、`T
   python tools/make_avatar.py 你的图.png web/qb.png 256
   ```
 
-- 页头右侧的「源码仓库」按钮指向本仓库，如需改成别的地址，
-  修改 `web/index.html` 里那个 `<a class="ghbtn" href="...">` 即可。
+- 页头右侧有两个按钮：「源码仓库」与 **★ Star**（后者会显示实时星标数：
+  优先走 GitHub API 并缓存 10 分钟，失败时降级为 shields.io 徽章图，`file://` 打开也能显示）。
+- 触发【契约成立】结局时，QB 会亲自讨一枚星标作为"契约见证"——这是设计上的彩蛋，不是弹窗广告。
+- 如需改成你自己的地址，修改 `web/index.html` 里那两个 `<a class="ghbtn">` 的 href 即可。
 - 版权提示：角色相关图片的授权请自行确认，仓库中不包含第三方商业素材；
   若替换为他人作品，请遵守其许可协议。
 
