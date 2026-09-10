@@ -67,17 +67,26 @@
   footer { flex:0 0 auto; background:rgba(255,255,255,.86);
            backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
            border-top:1px solid var(--line); padding:12px 18px; }
-  .row { max-width:840px; margin:0 auto; display:flex; gap:10px; align-items:flex-end; }
-  textarea { flex:1; resize:vertical; min-height:46px; max-height:140px; padding:12px;
-             border:1px solid #ecd9e2; border-radius:10px; font:inherit; }
-  footer button { border:0; border-radius:10px; padding:12px 18px; font:inherit; cursor:pointer; }
+  .row { max-width:840px; margin:0 auto; display:flex; gap:10px; align-items:flex-end;
+         flex-wrap:nowrap; }
+  textarea { flex:1 1 auto; min-width:0; width:100%; resize:none; min-height:46px; max-height:140px;
+             padding:12px; border:1px solid #ecd9e2; border-radius:10px; font:inherit;
+             line-height:1.5; overflow-y:auto; }
+  footer button { flex:0 0 auto; white-space:nowrap; word-break:keep-all;
+                  border:0; border-radius:10px; padding:12px 18px; font:inherit; cursor:pointer; }
   #send { background:var(--pink); color:#3a2030; font-weight:600; }
   #reset { background:#f3e8ee; color:#7b6270; }
   button[disabled] { opacity:.5; cursor:default; }
   .hint { flex:0 0 auto; max-width:840px; margin:10px auto 0; padding:0 18px; color:#7d6673; font-size:12px; }
   @media (max-width: 560px) {
     body { background-attachment: scroll; }        /* 移动端 fixed 背景会卡顿 */
-    header { gap:8px; } #key { width:100%; order:5; } #model { order:6; }
+    header { gap:8px; }
+    #key { width:100%; order:5; } #model { order:6; }
+    /* 窄屏才让输入区换行：textarea 独占一行，两个按钮平分下一行 */
+    .row { flex-wrap:wrap; }
+    textarea { flex:1 1 100%; }
+    footer button { flex:1 1 0; }
+    #bars { gap:10px; }
   }
 </style>
 </head>
@@ -109,7 +118,7 @@
 <div class="hint">提示：浏览器版可用工具为 天气 / IP 定位 / 英文科技资讯 / 时间 / 计算；中文搜索与行业报告检索在 Python 版里。</div>
 
 <footer><div class="row">
-  <textarea id="q" placeholder="输入问题，Enter 发送（Shift+Enter 换行）"></textarea>
+  <textarea id="q" placeholder="输入问题，Enter 发送" rows="1"></textarea>
   <button id="send">发送</button><button id="reset">重新开始</button>
 </div></footer>
 
@@ -221,15 +230,18 @@ function buildClient() {
   return new QBClient({ apiKey, model: modelSelect.value });
 }
 
+function autoGrow(el) {
+  el.style.height = "auto";
+  el.style.height = Math.min(el.scrollHeight, 140) + "px";
+}
+
 function refreshKeyState() {
   const has = !!keyInput.value.trim();
   const el = $("keyState");
   el.textContent = has ? "key 已就绪" : "未配置 key";
   el.className = has ? "ok" : "bad";
   $("send").disabled = !has;
-  $("q").placeholder = has
-    ? "输入问题，Enter 发送（Shift+Enter 换行）"
-    : "请先在右上角填入你自己的 DeepSeek API key";
+  $("q").placeholder = has ? "输入问题，Enter 发送" : "先填入 API key 再开始";
 }
 
 async function ask() {
@@ -241,6 +253,7 @@ async function ask() {
   }
   add("me", text);
   $("q").value = "";
+  autoGrow($("q"));
   $("send").disabled = true;
   const waiting = add("sys", "僕在计算……");
   try {
@@ -311,6 +324,7 @@ add("sys", keyInput.value.trim()
 $("q").addEventListener("keydown", (e) => {
   if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); ask(); }
 });
+$("q").addEventListener("input", () => autoGrow($("q")));
 </script>
 </body>
 </html>
