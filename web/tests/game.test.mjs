@@ -1,5 +1,6 @@
 // 六结局触发测试（game.py / tests/test_endings.py 的 JS 版，不调用模型）
-import { BASE_TURNS, EXTEND_STEP, HARD_CAP, checkEnding, describeDelta, newState, updateState } from "../game.js";
+import { BASE_TURNS, EXTEND_STEP, HARD_CAP, checkEnding, describeDelta, newState, updateState,
+         parseStateMarker, applyModelState, snapshotOf, applyTurnState } from "../game.js";
 
 const CASES = {
   E_SIGN: ["我签！我愿意转专业去土木"],
@@ -119,6 +120,40 @@ if (!line1.includes("契约 +7") || !line1.includes("第 2/")) {
 }
 const line2 = describeDelta({ ...after }, { ...after, turn: 3, stall: 2 });
 if (!line2.includes("无变化")) { console.log(`FAIL describeDelta 无变化行不正确：${line2}`); failed += 1; }
+
+// ---- 语义评分：解析、容错、钳制、覆盖关键词 ----
+const [clean, parsed] = parseStateMarker('僕这样说。[[STATE:{"contract":8,"flags":["asked_how"]}]]');
+if (clean !== "僕这样说。" || parsed?.contract !== 8) {
+  console.log(`FAIL 评分标记解析：clean=${JSON.stringify(clean)} data=${JSON.stringify(parsed)}`); failed += 1;
+}
+const [, badParsed] = parseStateMarker("嗯。[[STATE:{不是json}]]");
+if (badParsed !== null) { console.log("FAIL 坏 JSON 应当返回 null"); failed += 1; }
+
+const pre = { contract: 0, suspicion: 0, despair: 0, resistance: 0, reform: 0, flags: [] };
+const st = { ...newState(), turn: 1 };
+updateState(st, "土木的课程难吗");                       // 关键词会给 +18
+if (st.contract < 15) { console.log(`FAIL 关键词兜底未生效：${st.contract}`); failed += 1; }
+applyModelState(st, pre, { contract: 3, flags: [] });    // 模型说只 +3
+if (st.contract !== 3) { console.log(`FAIL 模型评分未覆盖关键词：${st.contract}（应为 3）`); failed += 1; }
+
+applyModelState(st, pre, { contract: 999, suspicion: -999, flags: ["hack", "signed"] });
+if (st.contract !== 25 || st.suspicion !== 0 || st.flags.includes("hack")) {
+  console.log(`FAIL 钳制/白名单失效：${st.contract} ${st.suspicion} ${JSON.stringify(st.flags)}`);
+  failed += 1;
+}
+
+const st3 = { ...newState(), turn: 1 };
+updateState(st3, "土木的课程难吗", { contract: 2, suspicion: 20, despair: 0, resistance: 0, flags: ["suspicion"] });
+if (st3.contract !== 2 || st3.suspicion !== 20) {
+  console.log(`FAIL 混合调用应以模型为准：${st3.contract}/${st3.suspicion}`); failed += 1;
+}
+
+const st4 = { ...newState(), turn: 1 };
+const snap4 = snapshotOf(st4);
+applyTurnState(st4, snap4, { contract: 10, suspicion: 0, despair: 0, resistance: 0, flags: [] });
+if (st4.contract !== 10 || st4.stall !== 0) {
+  console.log(`FAIL applyTurnState 未正确应用：${st4.contract} stall=${st4.stall}`); failed += 1;
+}
 
 console.log(failed ? `\n${failed} 条不通过` : `\n全部 ${Object.keys(CASES).length} 条结局判定 + 动态轮数断言通过（JS 版）`);
 process.exit(failed ? 1 : 0);

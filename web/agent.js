@@ -2,12 +2,13 @@
 // 只是把 HTTP 客户端从 openai SDK 换成 fetch，并且自带结局玩法（game.js）。
 
 // 注意：资源版本号要与 index.html 里的 V 保持一致，避免"新代码 + 旧缓存模块"混搭
-const V = "?v=9";
+const V = "?v=10";
 
 const { SYSTEM_PROMPT } = await import("./persona.js" + V);
 const { FUNCTIONS, TOOLS, TOOL_AVAILABILITY_NOTE } = await import("./tools.js" + V);
 const gameMod = await import("./game.js" + V);
-const { ENDINGS, BASE_TURNS, checkEnding, gmNote, newState, updateState } = gameMod;
+const { ENDINGS, BASE_TURNS, checkEnding, gmNote, newState, updateState,
+        applyTurnState, parseStateMarker, snapshotOf } = gameMod;
 
 const DEFAULT_BASE = "https://api.deepseek.com";
 const DEFAULT_MODEL = "deepseek-chat";
@@ -76,14 +77,25 @@ export class QBClient {
 
   /** 带玩法的单轮推进（与 game.py 等价）。 */
   async turn(question) {
+    const pre = snapshotOf(this.state);        // 本轮之前的快照：模型增量相对于它
     this.state.turn += 1;
-    updateState(this.state, question);
+    updateState(this.state, question);         // 关键词预判（主持指令读当前局势，也是兜底）
     let ending = checkEnding(this.state);
     if (ending) this.state.ending = ending;
 
     const raw = await this._run(question, gmNote(this.state, ending));
+    // 语义评分：模型在回答末尾附的 [[STATE:{...}]] 是本轮的权威判定
+    const [cleanRaw, modelData] = parseStateMarker(raw);
     const selfConcluded = new RegExp(`\\[\\[ENDING:${ending || ""}\\]\\]`).test(raw);
-    let answer = raw.replace(/\[\[ENDING:[A-Z_]+\]\]/g, "").trim();
+    let answer = cleanRaw.replace(/\[\[ENDING:[A-Z_]+\]\]/g, "").trim();
+
+    if (modelData) {
+      applyTurnState(this.state, pre, modelData);
+      ending = checkEnding(this.state);
+      if (ending) this.state.ending = ending;
+    }
+    this.state.score_source = modelData ? "model" : "keywords";
+
     // 内核里追加的 messages 不进 history（只保留 user/assistant 文本，控制上下文长度）
     this.history.push({ role: "user", content: question });
     this.history.push({ role: "assistant", content: answer });

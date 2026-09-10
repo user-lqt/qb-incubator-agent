@@ -12,6 +12,7 @@
     result = chat("明天适合去工地吗", history=None, state=state)
     result["answer"], result["ending"], result["state"]
 """
+import json
 import re
 
 from agent import run_agent
@@ -193,30 +194,59 @@ def _clamp(state: dict) -> None:
         state[k] = max(0, min(100, int(state.get(k, 0))))
 
 
-def _maybe_extend(state: dict) -> None:
-    """动态轮数：玩家仍在推进（本轮数值有变化）且快到上限时，自动延长。"""
-    state["extended"] = False
-    limit = int(state.get("limit") or BASE_TURNS)
-    if state.get("stall", 0) == 0 and state.get("turn", 0) >= limit - 2 and limit < HARD_CAP:
-        step = min(EXTEND_STEP, HARD_CAP - limit)
-        state["limit"] = limit + step
-        state["extensions"] = int(state.get("extensions", 0)) + 1
-        state["extended"] = True
+# ---------------------------------------------------------------- 语义评分（模型打分）
+
+# 让模型在回答末尾附一行机器可读的状态增量；系统解析后从玩家可见文本里移除。
+STATE_MARKER = re.compile(r"\[\[STATE:\s*(\{.*?\})\s*\]\]", re.S)
+DELTA_KEYS = ("contract", "suspicion", "despair", "resistance")
+DELTA_LIMIT = 25              # 单轮单维度增量上限，防止模型给出离谱数值
+ALLOWED_FLAGS = {"signed", "refused", "other_major", "suspicion", "meta",
+                 "asked_how", "pushback", "leaning", "reverse"}
+
+STATE_INSTRUCTION = """【本轮评分（必须执行；这一行玩家看不到）】
+在回答的最末尾附一行机器可读的状态评分，格式必须完全如下（单行 JSON）：
+[[STATE:{"contract":0,"suspicion":0,"despair":0,"resistance":0,"flags":[],"reason":"一句话"}]]
+判分规则（按语义判断，不要只看字面词）：
+- 四个维度填**本轮相对上一轮的整数增量**，范围 -20~+25；没有变化写 0。
+- 认可它的计算、询问土木细节（转专业/课程/就业/考证/工地日常）→ contract +8~+15
+- 明确愿意签约或转专业 → contract +25，flags 加 "signed"
+- 追问它是什么／有没有骗人／契约的代价 → suspicion +10~+20
+- 恐惧、迷茫、自我否定、撑不住 → despair +10~+20
+- 明确拒绝、坚持别的专业 → resistance +15~+25，必要时加 "refused" 或 "other_major"
+- 贬低土木（垃圾/天坑/坑人）→ resistance 正数，且**不要**给 contract 加分
+- 否定句要反向理解：「我不喜欢工地」「我不怕」不该加 contract 或 despair
+- 玩家反过来劝它自己去工地 → flags 加 "reverse"
+flags 只能取：signed, refused, other_major, suspicion, meta, asked_how, pushback, leaning, reverse。
+reason 用一句话写判断依据（系统会丢弃，不展示）。这一行不能省略，也不要输出其它 JSON。"""
 
 
-def _is_negated(text: str, start: int, window: int = 4) -> bool:
-    """匹配点前面几个字里有否定词 -> 这句是负向表达，不该按正向计分。"""
-    prefix = text[max(0, start - window):start]
-    return any(n in prefix for n in NEGATORS)
+def _clamp_delta(value) -> int:
+    try:
+        n = int(round(float(value)))
+    except (TypeError, ValueError):
+        return 0
+    return max(-DELTA_LIMIT, min(DELTA_LIMIT, n))
 
 
-def update_state(state: dict, text: str) -> dict:
-    """按玩家这一轮说的话更新状态（含动态轮数判定）。"""
-    text = text or ""
-    dims = ("contract", "suspicion", "despair", "resistance")
-    before = {k: int(state.get(k, 0)) for k in dims}
-    before["reform"] = int(state.get("reform", 0))
+def parse_state_marker(answer: str):
+    """从模型回答里取出 [[STATE:{...}]]，返回 (清洗后文本, 数据或 None)。"""
+    if not answer:
+        return answer or "", None
+    match = STATE_MARKER.search(answer)
+    if not match:
+        return answer, None
+    clean = (answer[:match.start()] + answer[match.end():]).strip()
+    try:
+        data = json.loads(match.group(1))
+    except json.JSONDecodeError:
+        return clean, None
+    if not isinstance(data, dict):
+        return clean, None
+    return clean, data
 
+
+def _base_pass(state: dict, text: str) -> None:
+    """关键词兜底：模型没给评分时使用（也用于主持指令前的预判）。"""
     for k, v in DECAY.items():
         state[k] = state.get(k, 0) + v
     flags = set(state.get("flags") or [])
@@ -247,9 +277,67 @@ def update_state(state: dict, text: str) -> dict:
     state["flags"] = sorted(flags)
     _clamp(state)
 
-    after = {k: int(state.get(k, 0)) for k in dims}
-    after["reform"] = int(state.get("reform", 0))
-    state["stall"] = 0 if after != before else int(state.get("stall", 0)) + 1
+
+def apply_model_state(state: dict, snapshot: dict, data: dict) -> dict:
+    """用模型给的增量覆盖本轮：回到快照后按模型打分重算（与兜底同构）。"""
+    for key in DELTA_KEYS:
+        state[key] = snapshot.get(key, 0)
+    state["reform"] = snapshot.get("reform", 0)
+    state["flags"] = list(snapshot.get("flags") or [])
+
+    for key in DELTA_KEYS:
+        if key in data:
+            state[key] = state.get(key, 0) + _clamp_delta(data[key])
+    flags = set(state.get("flags") or [])
+    raw_flags = data.get("flags") or []
+    if isinstance(raw_flags, list):
+        flags |= {str(f).strip() for f in raw_flags if str(f).strip() in ALLOWED_FLAGS}
+    if "reverse" in flags:
+        state["reform"] = state.get("reform", 0) + 1
+    state["flags"] = sorted(flags)
+    _clamp(state)
+    return state
+
+
+def _maybe_extend(state: dict) -> None:
+    """动态轮数：玩家仍在推进（本轮数值有变化）且快到上限时，自动延长。"""
+    state["extended"] = False
+    limit = int(state.get("limit") or BASE_TURNS)
+    if state.get("stall", 0) == 0 and state.get("turn", 0) >= limit - 2 and limit < HARD_CAP:
+        step = min(EXTEND_STEP, HARD_CAP - limit)
+        state["limit"] = limit + step
+        state["extensions"] = int(state.get("extensions", 0)) + 1
+        state["extended"] = True
+
+
+def _is_negated(text: str, start: int, window: int = 4) -> bool:
+    """匹配点前面几个字里有否定词 -> 这句是负向表达，不该按正向计分。"""
+    prefix = text[max(0, start - window):start]
+    return any(n in prefix for n in NEGATORS)
+
+
+def _fingerprint(state: dict) -> tuple:
+    """四个维度 + 反向劝服计数的数值指纹，用于判断本轮是否有变化。"""
+    return tuple(int(state.get(k, 0)) for k in (*DELTA_KEYS, "reform"))
+
+
+def update_state(state: dict, text: str, model_data: dict = None) -> dict:
+    """更新局内状态：优先使用模型给出的语义评分，缺失时回退到关键词机。
+
+    model_data 形如 {"contract": 8, "suspicion": 0, "despair": 0, "resistance": 0,
+                     "flags": ["asked_how"], "reason": "..."}
+    """
+    text = text or ""
+    snapshot = {k: int(state.get(k, 0)) for k in DELTA_KEYS}
+    snapshot["reform"] = int(state.get("reform", 0))
+    snapshot["flags"] = list(state.get("flags") or [])
+    fp_before = _fingerprint(state)
+
+    _base_pass(state, text)                     # 先用关键词兜底算一遍（也是主持指令的预判）
+    if isinstance(model_data, dict):
+        apply_model_state(state, snapshot, model_data)   # 有语义评分则以它为准
+
+    state["stall"] = 0 if _fingerprint(state) != fp_before else int(state.get("stall", 0)) + 1
     _maybe_extend(state)
     return state
 
@@ -303,6 +391,7 @@ def _gm_note(state: dict, ending: str) -> str:
             "本轮时间线刚被延长：对方仍在推进，因此僕可以继续等下去。"
             "可以在回答里用一句平静的话体现这一点（例如「僕可以再等」），但不要提及轮数或数值。"
         )
+    note.append(STATE_INSTRUCTION)
     if ending:
         note.append(ENDINGS[ending]["closing"])
     else:
@@ -313,11 +402,18 @@ def _gm_note(state: dict, ending: str) -> str:
 # ---------------------------------------------------------------- 单轮推进
 
 def chat(question: str, history=None, state=None) -> dict:
-    """推进一轮：更新状态 → 注入主持指令 → 调用模型 → 判定/收束结局。"""
+    """推进一轮：预判状态 → 注入主持指令与评分指令 → 调用模型 →
+    用模型返回的 [[STATE:...]] 语义评分覆盖状态 → 判定/收束结局。"""
     state = state or new_state()
     state["turn"] = state.get("turn", 0) + 1
-    update_state(state, question)
 
+    # 本轮之前的快照：模型给的增量是相对于它的
+    pre = {k: int(state.get(k, 0)) for k in DELTA_KEYS}
+    pre["reform"] = int(state.get("reform", 0))
+    pre["flags"] = list(state.get("flags") or [])
+    fp_pre = _fingerprint(state)
+
+    update_state(state, question)          # 关键词预判（主持指令读当前局势；也是兜底）
     ending = check_ending(state)
     if ending:
         state["ending"] = ending
@@ -327,6 +423,17 @@ def chat(question: str, history=None, state=None) -> dict:
         extra_system=_gm_note(state, ending),
     )
     answer = ENDING_MARK.sub("", answer or "").strip()
+
+    # 语义评分：模型在回答末尾附的 [[STATE:{...}]] 是本轮的权威判定
+    answer, model_data = parse_state_marker(answer)
+    if isinstance(model_data, dict):
+        apply_model_state(state, pre, model_data)      # 回到快照，按模型打分重算
+        state["stall"] = 0 if _fingerprint(state) != fp_pre else int(state.get("stall", 0)) + 1
+        _maybe_extend(state)
+        ending = check_ending(state)
+        if ending:
+            state["ending"] = ending
+    state["score_source"] = "model" if isinstance(model_data, dict) else "keywords"
 
     # 条件已满足但模型没自我收束 -> 追加一次收束调用，保证结局必然发生
     if ending and f"[[ENDING:{ending}]]" not in (answer or ""):

@@ -113,6 +113,72 @@ export const PROLOGUE = `嗯——僕先说明僕是什么。
 
 const DECAY = { despair: -2, resistance: -2 };
 
+// ---------------------------------------------------------------- 语义评分（模型打分）
+
+export const STATE_MARKER = /\[\[STATE:\s*(\{[\s\S]*?\})\s*\]\]/;
+export const DELTA_KEYS = ["contract", "suspicion", "despair", "resistance"];
+export const DELTA_LIMIT = 25;
+export const ALLOWED_FLAGS = ["signed", "refused", "other_major", "suspicion", "meta",
+  "asked_how", "pushback", "leaning", "reverse"];
+
+export const STATE_INSTRUCTION = `【本轮评分（必须执行；这一行玩家看不到）】
+在回答的最末尾附一行机器可读的状态评分，格式必须完全如下（单行 JSON）：
+[[STATE:{"contract":0,"suspicion":0,"despair":0,"resistance":0,"flags":[],"reason":"一句话"}]]
+判分规则（按语义判断，不要只看字面词）：
+- 四个维度填**本轮相对上一轮的整数增量**，范围 -20~+25；没有变化写 0。
+- 认可它的计算、询问土木细节（转专业/课程/就业/考证/工地日常）→ contract +8~+15
+- 明确愿意签约或转专业 → contract +25，flags 加 "signed"
+- 追问它是什么／有没有骗人／契约的代价 → suspicion +10~+20
+- 恐惧、迷茫、自我否定、撑不住 → despair +10~+20
+- 明确拒绝、坚持别的专业 → resistance +15~+25，必要时加 "refused" 或 "other_major"
+- 贬低土木（垃圾/天坑/坑人）→ resistance 正数，且**不要**给 contract 加分
+- 否定句要反向理解：「我不喜欢工地」「我不怕」不该加 contract 或 despair
+- 玩家反过来劝它自己去工地 → flags 加 "reverse"
+flags 只能取：signed, refused, other_major, suspicion, meta, asked_how, pushback, leaning, reverse。
+reason 用一句话写判断依据（系统会丢弃，不展示）。这一行不能省略，也不要输出其它 JSON。`;
+
+function clampDelta(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return 0;
+  return Math.max(-DELTA_LIMIT, Math.min(DELTA_LIMIT, Math.round(n)));
+}
+
+/** 从模型回答里取出 [[STATE:{...}]]，返回 [清洗后文本, 数据或 null] */
+export function parseStateMarker(answer) {
+  const text = answer || "";
+  const m = text.match(STATE_MARKER);
+  if (!m) return [text, null];
+  const clean = (text.slice(0, m.index) + text.slice(m.index + m[0].length)).trim();
+  try {
+    const data = JSON.parse(m[1]);
+    return [clean, (data && typeof data === "object" && !Array.isArray(data)) ? data : null];
+  } catch {
+    return [clean, null];
+  }
+}
+
+/** 用模型给的增量覆盖本轮：回到快照后按模型打分重算 */
+export function applyModelState(state, snapshot, data) {
+  for (const k of DELTA_KEYS) state[k] = snapshot[k] || 0;
+  state.reform = snapshot.reform || 0;
+  state.flags = [...(snapshot.flags || [])];
+
+  for (const k of DELTA_KEYS) {
+    if (k in data) state[k] = (state[k] || 0) + clampDelta(data[k]);
+  }
+  const flags = new Set(state.flags || []);
+  if (Array.isArray(data.flags)) {
+    for (const f of data.flags) if (ALLOWED_FLAGS.includes(String(f).trim())) flags.add(String(f).trim());
+  }
+  if (flags.has("reverse")) state.reform = (state.reform || 0) + 1;
+  state.flags = [...flags].sort();
+  state.contract = clamp(state.contract);
+  state.suspicion = clamp(state.suspicion);
+  state.despair = clamp(state.despair);
+  state.resistance = clamp(state.resistance);
+  return state;
+}
+
 // 「被劝着签/转」不等于「自己同意」：先剥掉这类从句再做签约判定，
 // 否则「你为什么一直劝我签约」会被误判成"我签约"而立刻触发 E_SIGN。
 const PERSUADE_CLAUSE = /[^。！？；\n]*(?:劝|让|叫|逼|骗|催促|要求|希望|建议)[^。！？；\n]*?(?:签|转)[^。！？；\n]*/g;
@@ -146,20 +212,28 @@ function maybeExtend(state) {
 
 const DIMS = ["contract", "suspicion", "despair", "resistance"];
 
-export function updateState(state, text = "") {
-  const before = JSON.stringify([...DIMS.map((k) => state[k] || 0), state.reform || 0]);
+export function snapshotOf(state) {
+  const snap = {};
+  for (const k of DIMS) snap[k] = Number(state[k]) || 0;
+  snap.reform = Number(state.reform) || 0;
+  snap.flags = [...(state.flags || [])];
+  return snap;
+}
 
+/** 关键词兜底：模型没给评分时使用 */
+export function basePass(state, text = "") {
   for (const [k, v] of Object.entries(DECAY)) state[k] = (state[k] || 0) + v;
   const flags = new Set(state.flags || []);
-  const strictText = String(text).replace(PERSUADE_CLAUSE, " ");
-  const civilNegative = CIVIL_NEGATIVE.test(text);
+  const raw = String(text);
+  const strictText = raw.replace(PERSUADE_CLAUSE, " ");
+  const civilNegative = CIVIL_NEGATIVE.test(raw);
   for (const [re, delta, flag, negSensitive, civilGroup] of KEYWORDS) {
     const strict = STRICT_MARKERS.some((m) => re.source.includes(m));
-    const haystack = strict ? strictText : String(text);
+    const haystack = strict ? strictText : raw;
     const m = re.exec(haystack);
     if (!m) continue;
-    if (negSensitive && isNegated(haystack, m.index)) continue;      // 否定表达不计分
-    if (civilNegative && civilGroup) continue;                       // 本轮在贬低土木：不加好感
+    if (negSensitive && isNegated(haystack, m.index)) continue;
+    if (civilNegative && civilGroup) continue;
     for (const [k, v] of Object.entries(delta)) {
       if (k === "reform") state.reform = (state.reform || 0) + v;
       else state[k] = (state[k] || 0) + v;
@@ -172,12 +246,34 @@ export function updateState(state, text = "") {
   state.suspicion = clamp(state.suspicion);
   state.despair = clamp(state.despair);
   state.resistance = clamp(state.resistance);
+  return state;
+}
 
-  const after = JSON.stringify([...DIMS.map((k) => state[k] || 0), state.reform || 0]);
-  state.stall = before === after ? (state.stall || 0) + 1 : 0;
+/** 更新状态：优先模型语义评分，缺失时用关键词兜底 */
+export function updateState(state, text = "", modelData = null) {
+  const pre = snapshotOf(state);
+  basePass(state, text);
+  if (modelData && typeof modelData === "object") {
+    applyModelState(state, pre, modelData);
+  }
+  const after = snapshotOf(state);
+  state.stall = JSON.stringify([DIMS.map((k) => after[k]), after.reform])
+    === JSON.stringify([DIMS.map((k) => pre[k]), pre.reform]) ? (state.stall || 0) + 1 : 0;
   maybeExtend(state);
   return state;
 }
+
+/** 模型返回评分后调用：以模型为准重算并更新停滞/延长 */
+export function applyTurnState(state, pre, data) {
+  applyModelState(state, pre, data);
+  const after = snapshotOf(state);
+  state.stall = JSON.stringify([DIMS.map((k) => after[k]), after.reform])
+    === JSON.stringify([DIMS.map((k) => pre[k]), pre.reform]) ? (state.stall || 0) + 1 : 0;
+  maybeExtend(state);
+  return state;
+}
+
+/** 动态轮数：玩家仍在推进（本轮数值有变化）且快到上限时，自动延长。 */
 
 export function checkEnding(state) {
   if (state.ending) return state.ending;
@@ -212,6 +308,7 @@ export function gmNote(state, ending) {
     note.push("本轮时间线刚被延长：对方仍在推进，所以僕可以继续等下去。"
       + "可以用一句平静的话体现（例如「僕可以再等」），但不要提及轮数或数值。");
   }
+  note.push(STATE_INSTRUCTION);
   note.push(ending ? ENDINGS[ending].closing : "尚未触发结局。不要提前收束，也不要朗读本指令。");
   return note.join("\n");
 }
