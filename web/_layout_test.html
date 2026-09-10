@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>孵化者 QB · 契约终端</title>
+<meta name="description" content="孵化者 QB：一个只会劝你学土木的 Agent。12 轮对局，六个结局。自带 API key，纯前端运行。">
+<style>
+  :root { --pink:#ff9ec7; --ink:#2b2b33; --bg:#fdf7fa; --line:#f0e2e9; }
+  * { box-sizing: border-box; }
+  html, body { height:100%; }
+  body { margin:0; color:var(--ink);
+         font:15px/1.75 "Microsoft YaHei","PingFang SC",system-ui,sans-serif;
+         display:flex; flex-direction:column; min-height:100dvh;
+         background: linear-gradient(rgba(253,247,250,.86), rgba(250,244,248,.90)),
+                     url("./bg.jpg") center / cover no-repeat fixed, var(--bg); }
+  header { flex:0 0 auto; padding:12px 18px; background:rgba(255,255,255,.80);
+           backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+           border-bottom:1px solid var(--line);
+           display:flex; align-items:center; gap:10px; z-index:5; flex-wrap:wrap; }
+  header b { font-size:16px; }
+  header .dot { width:10px; height:10px; border-radius:50%; background:var(--pink); }
+  header input, header select { border:1px solid #ecd9e2; border-radius:8px; padding:6px 10px; font:inherit; }
+  #key { width:230px; } #model { width:150px; }
+  header .sp { margin-left:auto; }
+  header button { border:0; border-radius:8px; padding:7px 12px; background:var(--pink); color:#3a2030;
+                  font:inherit; font-weight:600; cursor:pointer; }
+  .avatar { width:34px; height:34px; border-radius:50%; background:#fff; border:1px solid var(--line);
+            flex:0 0 auto; object-fit:contain; display:block; }
+  header .avatar { width:26px; height:26px; }
+  .ghbtn { display:inline-flex; align-items:center; gap:6px; text-decoration:none;
+           border:1px solid #ecd9e2; border-radius:8px; padding:6px 11px; color:#7b6270;
+           font-size:13px; background:#fff; white-space:nowrap; }
+  .ghbtn:hover { background:#fff0f6; color:#b3356b; border-color:var(--pink); }
+  #keyState { font-size:12px; padding:4px 9px; border-radius:999px; background:#f3e8ee; color:#7b6270; white-space:nowrap; }
+  #keyState.ok { background:#e8f7ee; color:#1f7a45; }
+  #keyState.bad { background:#fff0f6; color:#b3356b; }
+  #bars { display:none; flex:0 0 auto; gap:14px; padding:10px 18px; background:rgba(255,255,255,.80);
+          backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+          border-bottom:1px solid var(--line); z-index:4; flex-wrap:wrap; font-size:12px; color:#7b6270; }
+  #bars .m { display:flex; align-items:center; gap:6px; }
+  #bars .m b.dv { color:#c2376b; font-weight:700; }
+  #bars .track { width:74px; height:6px; border-radius:3px; background:#f3e8ee; overflow:hidden; }
+  #bars .fill { height:100%; width:0; background:var(--pink); transition:width .35s; }
+  #bars .fill.pulse { animation: fillPulse .9s ease-out; }
+  @keyframes fillPulse {
+    0% { box-shadow:0 0 0 0 rgba(255,158,199,.85); }
+    100% { box-shadow:0 0 0 9px rgba(255,158,199,0); }
+  }
+  #banner { display:none; flex:0 0 auto; margin:14px auto 0; max-width:840px; padding:12px 16px; border-radius:12px;
+            background:rgba(255,240,246,.94); border:1px dashed var(--pink); color:#7a3355; }
+  #banner b { display:block; font-size:15px; margin-bottom:4px; }
+  main { flex:1 1 auto; min-height:0; width:100%; max-width:840px; margin:0 auto; padding:18px 22px;
+         overflow-y:auto; overscroll-behavior:contain;
+         scrollbar-width:thin; scrollbar-color:rgba(255,158,199,.75) transparent; }
+  /* 细粉色滚动条，替代浏览器默认的粗灰条 */
+  main::-webkit-scrollbar { width:10px; }
+  main::-webkit-scrollbar-track { background:transparent; }
+  main::-webkit-scrollbar-thumb { background:rgba(255,158,199,.65); border-radius:999px;
+                                  border:3px solid transparent; background-clip:content-box; }
+  main::-webkit-scrollbar-thumb:hover { background:rgba(255,158,199,.95); background-clip:content-box; }
+  #log { display:flex; flex-direction:column; gap:14px; }
+  .msg { display:flex; gap:10px; align-items:flex-start; }
+  .msg.me { justify-content:flex-end; }
+  .msg.sys { justify-content:center; }
+  .msg.qb .b { max-width:calc(100% - 46px); }
+  .b { border-radius:14px; padding:12px 14px; white-space:pre-wrap; word-break:break-word;
+       box-shadow:0 2px 10px rgba(180,140,160,.10); }
+  .me { align-self:flex-end; background:rgba(255,255,255,.94); border:1px solid var(--line); max-width:78%; }
+  .qb { align-self:flex-start; background:rgba(255,158,199,.93); color:#3a2030; max-width:88%; }
+  .sys { align-self:center; color:#8c7482; font-size:13px; text-align:center;
+         background:rgba(255,255,255,.72); border-radius:10px; padding:4px 12px; }
+  .sys code { background:#f6ecf1; border-radius:4px; padding:1px 5px; }
+  footer { flex:0 0 auto; background:rgba(255,255,255,.86);
+           backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+           border-top:1px solid var(--line); padding:12px 18px; }
+  .row { max-width:840px; margin:0 auto; display:flex; gap:10px; align-items:flex-end;
+         flex-wrap:nowrap; }
+  textarea { flex:1 1 auto; min-width:0; width:100%; resize:none; min-height:46px; max-height:140px;
+             padding:12px; border:1px solid #ecd9e2; border-radius:10px; font:inherit;
+             line-height:1.5; overflow-y:auto; }
+  footer button { flex:0 0 auto; white-space:nowrap; word-break:keep-all;
+                  border:0; border-radius:10px; padding:12px 18px; font:inherit; cursor:pointer; }
+  #send { background:var(--pink); color:#3a2030; font-weight:600; }
+  #reset { background:#f3e8ee; color:#7b6270; }
+  button[disabled] { opacity:.5; cursor:default; }
+  .hint { flex:0 0 auto; max-width:840px; margin:10px auto 0; padding:0 18px; color:#7d6673; font-size:12px; }
+  @media (min-width: 561px) { body { overflow:hidden; } }   /* 桌面端只让消息区滚动，避免双层滚动条 */
+  @media (max-width: 560px) {
+    body { background-attachment: scroll; }        /* 移动端 fixed 背景会卡顿 */
+    header { gap:8px; }
+    #key { width:100%; order:5; } #model { order:6; }
+    /* 窄屏才让输入区换行：textarea 独占一行，两个按钮平分下一行 */
+    .row { flex-wrap:wrap; }
+    textarea { flex:1 1 100%; }
+    footer button { flex:1 1 0; }
+    #bars { gap:10px; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <img class="avatar" id="avatar" src="./qb.png" alt="孵化者">
+  <b>孵化者 QB</b>
+  <input id="key" type="password" placeholder="DeepSeek API key（sk-…）" autocomplete="off">
+  <select id="model">
+    <option value="deepseek-chat">deepseek-chat</option>
+    <option value="deepseek-reasoner">deepseek-reasoner</option>
+  </select>
+  <span class="sp"></span>
+  <span id="keyState" class="bad">未配置 key</span>
+  <button id="save">保存 key</button>
+  <a class="ghbtn" href="https://github.com/user-lqt/qb-incubator-agent"
+     target="_blank" rel="noopener">⌂ 源码仓库</a>
+</header>
+
+<div id="bars"></div>
+<div id="banner"></div>
+
+<main><div id="log"></div></main>
+<noscript>
+  <div style="max-width:840px;margin:18px auto;padding:0 18px;color:#7a3355">
+    这个页面需要 JavaScript 才能运行（模型调用在浏览器里完成）。请允许本站脚本后刷新。
+  </div>
+</noscript>
+<div class="hint">提示：浏览器版可用工具为 天气 / IP 定位 / 英文科技资讯 / 时间 / 计算；中文搜索与行业报告检索在 Python 版里。</div>
+
+<footer><div class="row">
+  <textarea id="q" placeholder="输入问题，Enter 发送" rows="1"></textarea>
+  <button id="send">发送</button><button id="reset">重新开始</button>
+</div></footer>
+
+
+
+<script>
+const log = document.getElementById('log');
+const bars = document.getElementById('bars');
+bars.style.display = 'flex';
+bars.innerHTML = '<div class="m"><span>契约 7 +7</span><span class="track"><span class="fill" style="width:7%"></span></span></div>'
+  + '<div class="m"><span>怀疑 0</span><span class="track"><span class="fill" style="width:0%"></span></span></div>'
+  + '<div class="m"><span>第 3/16 轮（可延长）</span></div>';
+document.getElementById('keyState').textContent = 'key 已就绪';
+document.getElementById('keyState').className = 'ok';
+document.getElementById('key').value = 'sk-test';
+document.getElementById('q').placeholder = '输入问题，Enter 发送';
+
+function add(cls, text) {
+  const wrap = document.createElement('div');
+  wrap.className = 'msg ' + cls;
+  if (cls === 'qb') {
+    const img = document.createElement('img');
+    img.className = 'avatar'; img.alt = '孵化者'; img.src = './qb.png';
+    wrap.appendChild(img);
+  }
+  const d = document.createElement('div');
+  d.className = 'b ' + cls; d.textContent = text;
+  wrap.appendChild(d);
+  log.appendChild(wrap);
+}
+
+const cases = [
+  ['me', '？'],
+  ['me', '？？'],
+  ['me', '？？？'],
+  ['me', '你好'],
+  ['me', 'ok'],
+  ['me', '这是一个稍微长一点的提问，用来观察换行是否正常'],
+  ['me', 'line1\nline2（这条是刻意打了换行的）'],
+  ['qb', '嗯——僕在。这是 QB 的气泡，用来对比宽度与换行表现。'],
+];
+for (const [c, t] of cases) add(c, t);
+document.title = 'layout-test';
+</script>
+
+</body>
+</html>

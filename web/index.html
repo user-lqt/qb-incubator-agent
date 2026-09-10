@@ -60,15 +60,17 @@
                                   border:3px solid transparent; background-clip:content-box; }
   main::-webkit-scrollbar-thumb:hover { background:rgba(255,158,199,.95); background-clip:content-box; }
   #log { display:flex; flex-direction:column; gap:14px; }
-  .msg { display:flex; gap:10px; align-items:flex-start; }
-  .msg.me { justify-content:flex-end; }
-  .msg.sys { justify-content:center; }
-  .msg.qb .b { max-width:calc(100% - 46px); }
+  /* 包裹层用 from-* 类名，避免和气泡的 .me/.qb/.sys 装饰样式打架 */
+  .msg { display:flex; gap:10px; align-items:flex-start; width:100%; }
+  .msg.from-me { justify-content:flex-end; }
+  .msg.from-sys { justify-content:center; }
+  .msg > .b { max-width:78%; }
+  .msg.from-qb > .b { max-width:calc(100% - 46px); }
   .b { border-radius:14px; padding:12px 14px; white-space:pre-wrap; word-break:break-word;
        box-shadow:0 2px 10px rgba(180,140,160,.10); }
-  .me { align-self:flex-end; background:rgba(255,255,255,.94); border:1px solid var(--line); max-width:78%; }
-  .qb { align-self:flex-start; background:rgba(255,158,199,.93); color:#3a2030; max-width:88%; }
-  .sys { align-self:center; color:#8c7482; font-size:13px; text-align:center;
+  .me { background:rgba(255,255,255,.94); border:1px solid var(--line); }
+  .qb { background:rgba(255,158,199,.93); color:#3a2030; }
+  .sys { color:#8c7482; font-size:13px; text-align:center;
          background:rgba(255,255,255,.72); border-radius:10px; padding:4px 12px; }
   .sys code { background:#f6ecf1; border-radius:4px; padding:1px 5px; }
   footer { flex:0 0 auto; background:rgba(255,255,255,.86);
@@ -174,7 +176,7 @@ function avatarImg() {
 
 function add(cls, text) {
   const wrap = document.createElement("div");
-  wrap.className = "msg " + cls;
+  wrap.className = "msg from-" + cls;
   if (cls === "qb") wrap.appendChild(avatarImg());
   const d = document.createElement("div");
   d.className = "b " + cls;
