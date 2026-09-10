@@ -198,3 +198,21 @@ export const stateBrief = (s) => {
   return `第 ${s.turn}/${limit} 轮${extra} ｜ 契约 ${s.contract} ｜ 怀疑 ${s.suspicion} `
     + `｜ 绝望 ${s.despair} ｜ 抗拒 ${s.resistance}`;
 };
+
+const DIM_CN = { contract: "契约", suspicion: "怀疑", despair: "绝望", resistance: "抗拒" };
+
+/** 生成"本轮状态变化"的一行说明，供界面显示（让玩家看得见自己的话起了什么作用）。 */
+export function describeDelta(prev = {}, next = {}) {
+  const parts = [];
+  for (const [k, cn] of Object.entries(DIM_CN)) {
+    const d = (next[k] || 0) - (prev[k] || 0);
+    if (d) parts.push(`${cn} ${d > 0 ? "+" : ""}${d} → ${next[k] || 0}`);
+  }
+  const turn = `第 ${next.turn || 0}/${next.limit || BASE_TURNS} 轮`;
+  const ext = next.extensions ? `，上限已延长 ${next.extensions} 次（至 ${next.limit} 轮）` : "";
+  if (!parts.length) {
+    const stall = next.stall ? `（连续 ${next.stall} 轮无变化）` : "";
+    return `本轮无变化，僕记录下来了 ｜ ${turn}${ext}${stall}`;
+  }
+  return `状态变化：${parts.join("、")} ｜ ${turn}${ext}`;
+}

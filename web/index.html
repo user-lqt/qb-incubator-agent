@@ -39,8 +39,14 @@
           backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
           border-bottom:1px solid var(--line); z-index:4; flex-wrap:wrap; font-size:12px; color:#7b6270; }
   #bars .m { display:flex; align-items:center; gap:6px; }
+  #bars .m b.dv { color:#c2376b; font-weight:700; }
   #bars .track { width:74px; height:6px; border-radius:3px; background:#f3e8ee; overflow:hidden; }
   #bars .fill { height:100%; width:0; background:var(--pink); transition:width .35s; }
+  #bars .fill.pulse { animation: fillPulse .9s ease-out; }
+  @keyframes fillPulse {
+    0% { box-shadow:0 0 0 0 rgba(255,158,199,.85); }
+    100% { box-shadow:0 0 0 9px rgba(255,158,199,0); }
+  }
   #banner { display:none; flex:0 0 auto; margin:14px auto 0; max-width:840px; padding:12px 16px; border-radius:12px;
             background:rgba(255,240,246,.94); border:1px dashed var(--pink); color:#7a3355; }
   #banner b { display:block; font-size:15px; margin-bottom:4px; }
@@ -104,7 +110,7 @@
 
 <script type="module">
 import { QBClient } from "./agent.js";
-import { BASE_TURNS, HARD_CAP, PROLOGUE } from "./game.js";
+import { BASE_TURNS, HARD_CAP, PROLOGUE, describeDelta } from "./game.js";
 
 const $ = (id) => document.getElementById(id);
 const log = $("log"), keyInput = $("key"), modelSelect = $("model");
@@ -146,24 +152,43 @@ function add(cls, text) {
   return wrap;
 }
 
-function metric(label, value) {
+function metric(label, value, changed, prevValue) {
   const m = document.createElement("div");
   m.className = "m";
-  m.innerHTML = `<span>${label}</span><span class="track"><span class="fill" style="width:${value}%"></span></span>`;
+  const delta = changed ? ` <b class="dv">${value >= prevValue ? "+" : ""}${value - prevValue}</b>` : "";
+  m.innerHTML = `<span>${label} ${value}${delta}</span>`
+    + `<span class="track"><span class="fill${changed ? " pulse" : ""}" style="width:${value}%"></span></span>`;
   return m;
 }
 
+let lastState = null;
+let prevState = { contract: 0, suspicion: 0, despair: 0, resistance: 0, turn: 0, limit: BASE_TURNS, extensions: 0, stall: 0 };
+
+const emptyState = () => ({
+  contract: 0, suspicion: 0, despair: 0, resistance: 0,
+  turn: 0, limit: BASE_TURNS, max_turns: BASE_TURNS, extensions: 0, stall: 0,
+});
+
 function renderBars(state) {
   const bars = $("bars");
+  const prev = lastState || { contract: 0, suspicion: 0, despair: 0, resistance: 0 };
   bars.style.display = "flex";
   bars.innerHTML = "";
-  bars.append(metric("契约", state.contract), metric("怀疑", state.suspicion),
-              metric("绝望", state.despair), metric("抗拒", state.resistance));
+  const pairs = [
+    ["契约", state.contract, prev.contract],
+    ["怀疑", state.suspicion, prev.suspicion],
+    ["绝望", state.despair, prev.despair],
+    ["抗拒", state.resistance, prev.resistance],
+  ];
+  for (const [label, value, prevValue] of pairs) {
+    bars.appendChild(metric(label, value, value !== prevValue, prevValue));
+  }
   const t = document.createElement("div");
   t.className = "m";
   const ext = state.extensions ? `已延长 ${state.extensions} 次` : "可延长";
   t.textContent = `第 ${state.turn}/${state.max_turns} 轮（${ext}）`;
   bars.appendChild(t);
+  lastState = { ...state };
 }
 
 function showEnding(title, tagline) {
@@ -206,6 +231,8 @@ async function ask() {
     waiting.remove();
     add("qb", r.answer);
     renderBars(r.state);
+    add("sys", describeDelta(prevState, r.state));
+    prevState = { ...r.state };
     showEnding(r.ending_title, r.ending_tagline);
   } catch (e) {
     waiting.remove();
@@ -222,7 +249,9 @@ $("reset").onclick = () => {
   client.reset();
   log.innerHTML = "";
   $("banner").style.display = "none";
-  $("bars").innerHTML = "";
+  lastState = null;
+  prevState = emptyState();
+  renderBars(emptyState());
   add("sys", "时间线已重置。第十二次轮回开始——或者，是第十三次。");
   add("qb", PROLOGUE);
   if (!keyInput.value.trim()) {
@@ -255,6 +284,7 @@ modelSelect.addEventListener("change", () => {
 client = buildClient();
 refreshKeyState();
 wireAvatar($("avatar"));
+renderBars(emptyState());   // 进页面就显示四条状态，别等第一次提问才出现
 
 // 开场：世界观序章 + 上手提示（序章文本来自 game.js，与命令行版同源）
 add("qb", PROLOGUE);

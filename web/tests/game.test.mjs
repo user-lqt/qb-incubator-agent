@@ -1,5 +1,5 @@
 // 六结局触发测试（game.py / tests/test_endings.py 的 JS 版，不调用模型）
-import { BASE_TURNS, EXTEND_STEP, HARD_CAP, checkEnding, newState, updateState } from "../game.js";
+import { BASE_TURNS, EXTEND_STEP, HARD_CAP, checkEnding, describeDelta, newState, updateState } from "../game.js";
 
 const CASES = {
   E_SIGN: ["我签！我愿意转专业去土木"],
@@ -79,6 +79,16 @@ for (const line of ["我签！", "我愿意签约", "我决定转专业去土木
   updateState(st, line);
   if (checkEnding(st) !== "E_SIGN") { console.log(`FAIL 「${line}」未被识别为签约`); failed += 1; }
 }
+
+// describeDelta：界面上的"本轮变化"提示
+const before = { ...newState(), turn: 1 };
+const after = { ...before, turn: 2, contract: 7, suspicion: 0 };
+const line1 = describeDelta(before, after);
+if (!line1.includes("契约 +7") || !line1.includes("第 2/")) {
+  console.log(`FAIL describeDelta 变化行不正确：${line1}`); failed += 1;
+}
+const line2 = describeDelta({ ...after }, { ...after, turn: 3, stall: 2 });
+if (!line2.includes("无变化")) { console.log(`FAIL describeDelta 无变化行不正确：${line2}`); failed += 1; }
 
 console.log(failed ? `\n${failed} 条不通过` : `\n全部 ${Object.keys(CASES).length} 条结局判定 + 动态轮数断言通过（JS 版）`);
 process.exit(failed ? 1 : 0);
