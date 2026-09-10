@@ -1,0 +1,5 @@
+chore: 统一换行符为 LF
+
+- .gitattributes: * text=auto eol=lf，*.bat 保持 CRLF，二进制不做转换
+- tools/sync_persona.py: 生成时显式 newline="\n"；--check 时做换行归一化比较，
+  避免 Windows 生成 CRLF 导致与线上（GitHub Pages）和 CI 文件出现字节差异

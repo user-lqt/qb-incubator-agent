@@ -36,13 +36,16 @@ def main() -> int:
     check = "--check" in sys.argv
     if check:
         current = PERSONA_JS.read_text(encoding="utf-8") if PERSONA_JS.exists() else ""
-        if current != js:
+        # 换行符归一化比较：仓库统一存 LF，Windows 检出可能是 CRLF
+        if current.replace("\r\n", "\n") != js:
             print("web/persona.js 与 persona.py 不同步，请运行：python tools/sync_persona.py")
             return 1
         print("web/persona.js 与 persona.py 同步")
         return 0
     PERSONA_JS.parent.mkdir(parents=True, exist_ok=True)
-    PERSONA_JS.write_text(js, encoding="utf-8")
+    # 固定 LF：避免 Windows 上生成 CRLF、导致与仓库/线上文件字节不一致
+    with open(PERSONA_JS, "w", encoding="utf-8", newline="\n") as fh:
+        fh.write(js)
     print(f"已写入 {PERSONA_JS.relative_to(ROOT)}（{len(js)} 字符）")
     return 0
 
