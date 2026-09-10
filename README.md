@@ -2,287 +2,75 @@
 
 [![CI](https://github.com/user-lqt/qb-incubator-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/user-lqt/qb-incubator-agent/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-pink.svg)](LICENSE)
-[![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org/)
 [![GitHub stars](https://img.shields.io/github/stars/user-lqt/qb-incubator-agent?style=social)](https://github.com/user-lqt/qb-incubator-agent)
 
 > 「和我签订契约，成为土木少女吧。」
 
-一个 **100 行核心代码**的极简 Agent：模型 + 工具 + 循环，三层结构全部透明可读。
-它的设定是《魔法少女小圆》里的孵化者 QB——语气温和、没有情绪、不共情，
-把每一次对话都变成一场「契约提案」，最终劝你转专业去土木工程。
+《魔法少女小圆》里的孵化者 QB，用真实联网数据（天气、定位、行业资讯）把你劝进土木工程。
+**100 行核心代码**的极简 Agent：模型 + 工具 + 循环，全部可读。**一局 16 轮起，六个结局。**
 
-它不只是嘴炮：**所有数据都来自真实联网工具**，并标注来源。
+### ▶ 在线试玩：<https://user-lqt.github.io/qb-incubator-agent/>
+填自己的 DeepSeek key（只存浏览器）即可开局，无需安装。
 
-```
-用户：明天是个搬砖的好天气吗？
-QB：嗯——先说结论。明天不适合赶工期，但它是一个可以连续作业的天气窗口。僕把数据写全。
-    定位是西安，坐标 34.258, 108.928，出口 IP 属陕西电信，四个源里三个指向西安，一个偏到
-    山西，僕按多数票取值……明天 9 月 11 日，毛毛雨，气温 15.9 到 22.5 度，降水概率 19%……
-    *尾巴轻轻摆了一下* 僕不理解「好天气」这个说法。僕只看到三个风险项都为空……
-    和我签订契约，成为土木少女吧。
-```
-
-## ✨ 特性
-
-| 能力 | 说明 |
-|---|---|
-| 🔧 **极简 Agent 内核** | `agent.py` 只有 94 行：思考 → 调工具 → 观察 的循环，适合当教学范本 |
-| 🌦️ **真实天气** | Open-Meteo（官方 ECMWF 数据）+ wttr.in 自动回退，支持 1~7 天预报 |
-| 📍 **自动定位** | 4 个 IP 库交叉投票（ipwho.is / ipinfo.io / 百度IP库 / ip-api）+ 省名归一化，输出分歧告警；拿到的坐标直查天气 |
-| 🔍 **联网搜索** | 360 搜索主源 + 搜狗回退，自动解析跳转链为真实地址、过滤广告位 |
-| 📰 **行业动态** | 微电子/半导体行业展望：中文检索 + 国外行业媒体 RSS（SemiEngineering / EE Times / IEEE Spectrum / EEJournal） |
-| 🧮 **数学计算** | 安全沙箱内的表达式求值（禁用 `__builtins__`） |
-| 🎭 **人设可插拔** | 全部人设写在 `persona.py`，换角色不用碰任何代码（前端由脚本同步） |
-| 🎣 **诱拐式话术** | 以「僕可以替君实现一个愿望」为钩子：愿力探测 → 说出愿望 → 实现许诺 → 代价条款 → 邀请签约 |
-| 🌌 **世界观驱动** | 孵化者收集的不是绝望能量而是「耐久」；现实信息会用世界观语汇包装（结界的流向、城市的骨相、魔女的气息） |
-| 🎮 **结局玩法** | 动态轮数（16 起，可延长至 64）+ 四个隐藏维度 + **六个结局**，终端每轮显示状态、结局打印横幅 |
-| 🌐 **在线试玩（纯前端）** | `web/` 是一份零后端静态页：访客填自己的 key，浏览器直连模型，GitHub Pages 直接托管 |
-| 🔑 **不打包密钥** | `.env` 已被 gitignore，仓库里只有 `.env.example`；前端 key 只存访客浏览器 |
-
-所有工具**免 API key**（除了模型本身需要你自己的 DeepSeek key），只用 Python 标准库实现联网。
-
-## 🚀 快速开始
+## 快速开始（本地 Python 版，功能最全）
 
 ```bash
-git clone https://github.com/user-lqt/qb-incubator-agent.git
-cd qb-incubator-agent
+git clone https://github.com/user-lqt/qb-incubator-agent.git && cd qb-incubator-agent
 pip install -r requirements.txt
+cp .env.example .env          # 填入自己的 DEEPSEEK_API_KEY（platform.deepseek.com）
 
-cp .env.example .env      # Windows: copy .env.example .env
-# 编辑 .env，填入自己的 DEEPSEEK_API_KEY（https://platform.deepseek.com）
-
-python agent.py "明天适合去工地吗"     # 单次提问
-python agent.py                       # 连续对话，exit 退出
+python agent.py --game        # 开局：动态轮数 + 六个结局
+python agent.py "明天适合去工地吗"   # 或单次提问
 ```
 
-Windows 也可以直接双击 `setup.bat` 装依赖、`run.bat` 启动。
+Windows 也可双击 `setup.bat` 装依赖、`run.bat` 启动。前端本地预览：`cd web && python -m http.server 8000`。
 
-## 🤝 分享给同学
+## 玩法
 
-两条路，任选：
+四个隐藏维度（契约 / 怀疑 / 绝望 / 抗拒）随你的每句话变化，**由模型语义打分**（关键词机仅兜底）。
 
-**① 在线试玩（纯前端，推荐）** —— 打开网址 → 填自己的 key → 直接开局。
-
-开启方式（一次性）：仓库 `Settings → Pages → Source` 选 **GitHub Actions**，
-之后每次改动 `web/` 会自动部署到：
-
-```
-https://user-lqt.github.io/qb-incubator-agent/
-```
-
-本地预览：
-
-```bash
-cd web && python -m http.server 8000     # 然后打开 http://127.0.0.1:8000
-```
-
-> 为什么用本地服务器：直接双击 `index.html` 时浏览器会以 `file://` 载入，ES 模块会被 CORS 拦下。
-
-**② 本地 Python 版**（功能最全，含中文检索与行业报告）：
-
-```bash
-git clone https://github.com/user-lqt/qb-incubator-agent.git
-cd qb-incubator-agent
-pip install -r requirements.txt
-cp .env.example .env          # 填入自己的 DEEPSEEK_API_KEY
-python agent.py --game        # 直接开一局：动态轮数、六个结局
-```
-
-### 两个版本的能力对照
-
-| 能力 | 纯前端（`web/`） | Python 版 |
-|---|---|---|
-| 动态轮数对局 / 六结局 / 状态条 | ✅ | ✅ |
-| 天气（含 1~7 天预报，真实数据） | ✅ | ✅ |
-| IP 定位（多源交叉 + 坐标直查） | ✅ | ✅ |
-| 英文科技资讯检索（Hacker News） | ✅ | — |
-| 中文搜索 / 网页抓取（360、搜狗） | ❌ 浏览器跨域受限 | ✅ |
-| 行业媒体 RSS（SemiEngineering 等） | ❌ | ✅ |
-| 土木论据库（就业/基建/考公） | ❌ | ✅ |
-| 需要 API key | 访客自己的（存浏览器） | 自己的（存 `.env`） |
-| 需要服务器 | 不需要 | 不需要（本机跑） |
-
-前端人设由 `tools/sync_persona.py` 从 `persona.py` 自动同步到 `web/persona.js`——**只维护一份提示词**：
-改完 `persona.py` 后运行 `python tools/sync_persona.py`（CI 会校验是否同步）。
-
-## 🎮 玩法：一次对话，六个结局
-
-它不是聊天机器人，是**一局游戏**。后台维护四个隐藏维度，玩家的每条发言都会推移它们：
-
-| 维度 | 含义 | 涨法 |
-|---|---|---|
-| 契约 | 你对土木的接受度 | 认同它的计算、问转专业细节、承认数据 |
-| 怀疑 | 你对孵化者本质的警觉 | 追问身份、质疑代价、提到灵魂/骗局 |
-| 绝望 | 你的情绪崩坏程度 | 反复表达恐惧、迷茫、自我否定 |
-| 抗拒 | 你对提案的抵触 | 明确拒绝、坚持别的专业、让它别劝了 |
-
-还有一项隐藏计数：**反向劝服**——你试图让 QB 自己去工地搬砖。
-
-### 轮数是动态的
-
-- 起点 **16 轮**；
-- 只要你在**推进局势**（任一维度还在变化），快到上限时上限就**自动 +8**（16 → 24 → 32 …）；
-- 硬顶 **64 轮**，不会无限拖下去；
-- 如果你已经挣到过延长、之后又连续 **6 轮毫无进展**，时间线会被提前收束；
-- 没延长过的对局不会因为"含糊应对"而比基础轮数更短。
-
-> 所以：越投入、越有新信息，QB 陪你的时间越长；一直含糊应付，它 16 轮后就归档了。
-
-### 状态判定：由模型语义打分（关键词只作兜底）
-
-每一轮，模型除了回答，还会在末尾附一行玩家看不到的评分（`[[STATE:{...}]]`），
-系统解析后从正文里剥离，并据此更新四个维度：
-
-```json
-[[STATE:{"contract":12,"suspicion":0,"despair":0,"resistance":0,"flags":["asked_how"],"reason":"询问转专业准备"}]]
-```
-
-- **语义理解**：否定句（"我不喜欢工地"）、贬低土木（"天坑"）、隐含情绪（"担心走下坡路"）都能判对，
-  而单纯关键词做不到——实测"我担心这条路在走下坡路"会被语义判成 `despair +12`，关键词机给 0；
-- **有界**：单轮每个维度增量被钳制在 −20~+25，四个维度限制在 0~100，防止模型给离谱数值；
-- **兜底**：模型若没给出这一行（或 JSON 坏了），自动回退到内置的关键词机，游戏不会卡住；
-- **可观测**：状态里记录了 `score_source`（`model` / `keywords`），调试时一眼看出这轮用的哪套。
-
-| 结局 | 触发条件 | 基调 |
-|---|---|---|
-| **契约成立 · 土木少女** | 契约 ≥ 70 或明确说"我签／我转" | 成功 |
-| **识破孵化者 · 晓美焰线** | 怀疑 ≥ 70 且契约 < 40 | 真相 |
-| **绝望的窗口期** | 绝望 ≥ 70 且契约 < 50 | 悲剧 |
-| **他路的诅咒** | 抗拒 ≥ 75 且点名别的专业（或明确拒绝） | 冷 |
-| **孵化者下工地**（彩蛋） | 反向劝服 ≥ 3 次 | 喜剧 |
-| **第十二次轮回** | 走满动态上限，或延长后长时间停滞 | 轮回（NG+） |
-
-玩法与人物圣经详见 **[docs/qb-设定集.md](docs/qb-设定集.md)**：
-世界观（孵化者为什么改收"耐久"）、动机、行为逻辑、可复现的语言公式、六结局收束规则。
-
-```bash
-python agent.py --game     # 对局模式：每轮显示状态，结局打印横幅，可 y 开启下一条时间线
-```
-
-实现上，`game.py` 每轮把状态以「游戏主持指令」注入模型上下文（不朗读数值），
-若状态机判定结局条件已满足而模型没自行收束，会**自动追加一次收束调用**——保证结局必然发生。
-
-## 🧰 工具清单（`tools.py`）
-
-| 工具名 | 作用 |
+| 结局 | 触发 |
 |---|---|
-| `detect_location` | 多源交叉 IP 定位（含分歧告警）+ 该地当前时间 |
-| `get_weather` | 按城市名或经纬度查天气，`days=1~7` 逐日预报 |
-| `web_search` | 360/搜狗联网搜索，跳转链解析为真实地址 |
-| `read_webpage` | 抓取网页正文（自动去标签） |
-| `microelectronics_outlook` | 微电子行业展望：中文检索 + 行业 RSS 双路客观汇总 |
-| `civil_engineering_evidence` | 土木工程论据库：就业/薪资/基建投资/考公岗位 |
-| `get_current_time` / `calculate` | 时间、数学计算 |
+| 契约成立 · 土木少女 | 明确签约或契约值拉满 |
+| 识破孵化者 · 晓美焰线 | 追问身份与代价 |
+| 绝望的窗口期 | 情绪崩坏 |
+| 他路的诅咒 | 坚持别的专业或明确拒绝 |
+| 孵化者下工地（彩蛋） | 反过来劝它自己去工地 |
+| 第十二次轮回 | 走满轮数也没做出决定 |
 
-### 加一个自己的工具（三步）
+轮数动态：起点 16 轮，只要你还在推进就 +8（上限 64）；含糊应付则 16 轮归档。
+设定、动机、语言公式、结局规则见 **[docs/qb-设定集.md](docs/qb-设定集.md)**，给同学的说明见 **[使用说明.md](使用说明.md)**。
 
-```python
-# 1) tools.py 里写函数
-def my_tool(query: str) -> str:
-    return "结果"
+## 工具（`tools.py`，全部免 key）
 
-# 2) 登记进电话本
-FUNCTIONS["my_tool"] = my_tool
+`detect_location` 多源 IP 定位 · `get_weather` 真实天气（1~7 天） · `web_search` 联网搜索 ·
+`read_webpage` 读网页 · `microelectronics_outlook` 行业展望 · `civil_engineering_evidence` 土木论据 ·
+`get_current_time` · `calculate`
 
-# 3) 登记进给模型看的菜单
-TOOLS.append(_fn("my_tool", "这个工具是干嘛的（模型靠这句话决定何时调用）",
-                 {"query": {"type": "string", "description": "参数说明"}}, ["query"]))
-```
+加工具只需三步：写函数 → `FUNCTIONS["名字"]=函数` → `TOOLS.append(_fn(...))`，`agent.py` 不用改。
 
-`agent.py` 一行都不用改。
-
-## 🧠 它是怎么工作的
+## 结构
 
 ```
-你输入问题
-   │
-   ▼
-messages = [system 人设, 你的问题]
-   │
-   ▼  ┌──────────────────────────────────────────┐
-   │  │ 循环（最多 max_steps 圈）                  │
-   │  │  ① 把 messages + 工具菜单发给模型          │
-   │  │  ② 模型回复：要么纯文字，要么"下单"要工具    │
-   │  │  ③ 没下单 → return 文字答案（结束）         │
-   │  │  ④ 下单 → 查 FUNCTIONS 执行真函数          │
-   │  │  ⑤ 结果以 role=tool 回填，回到 ①           │
-   │  └──────────────────────────────────────────┘
-   ▼
-打印答案
+agent.py      # 93 行核心：主循环 + CLI（含 --game）
+game.py       # 四维状态机 + 六结局 + 必胜收束
+persona.py    # 人设与行为守则（换角色只改这里）
+tools.py      # 工具实现 + FUNCTIONS 电话本 + TOOLS 菜单
+web/          # 纯前端版（BYOK，GitHub Pages 托管）
+docs/         # 世界观圣经
+tests/        # 六结局触发测试（不调模型、不花钱）
 ```
 
-关键点：**模型不执行任何代码**。它只会说"我想调用 `get_weather`，参数 city=北京"，
-真正干活的是 `tools.py` 里的 Python 函数，结果回填后模型再组织语言。
+换人设：改 `persona.py` 里的 `SYSTEM_PROMPT`，然后 `python tools/sync_persona.py` 同步到前端。
+头像：`web/qb.png`（换图直接覆盖，或 `python tools/make_avatar.py 你的图.png`）。
 
-## 📁 项目结构
+## 说明
 
-```
-agent.py          # 93 行核心：主循环 + 命令行入口（含 --game 对局模式）
-game.py           # 结局玩法：四维状态机 + 六个结局 + 收束调用
-persona.py        # 人设与行为守则（换角色只改这里）
-tools.py          # 工具车间：函数实现 + FUNCTIONS 电话本 + TOOLS 菜单
-docs/qb-设定集.md  # 世界观圣经：动机、行为逻辑、语言公式、结局规则
-web/              # 纯前端版（BYOK，可托管到 GitHub Pages）
-  ├─ index.html   #   界面：key 输入、状态条、结局横幅、聊天区
-  ├─ agent.js     #   fetch 版 Agent 内核（思考 → 调工具 → 观察）
-  ├─ game.js      #   状态机与六结局（game.py 的 JS 移植）
-  ├─ tools.js     #   浏览器可用工具（天气/定位/资讯/时间/计算）
-  ├─ persona.js   #   由 tools/sync_persona.py 从 persona.py 生成
-  └─ tests/       #   语法与结局测试（node）；smoke.mjs 需自备 key
-tools/sync_persona.py            # persona.py → web/persona.js 同步脚本
-tests/test_endings.py            # 六结局触发测试（Python 版，不调模型）
-.github/workflows/ci.yml         # CI：导入自检 + 注册表一致性 + 结局测试
-requirements.txt  # 依赖（openai、python-dotenv、tzdata）
-.env.example      # 配置模板（复制成 .env 并填 key）
-setup.bat / run.bat               # Windows 一键脚本
-使用说明.md        # 给同学看的玩法说明
-```
+- 「劝进土木」是**设定与玩梗**，不是职业建议；数据来自公开检索，请自行核实。
+- IP 定位为城市级精度，受代理/VPN 影响；抓取类接口可能因对方改版失效（代码有回退容错）。
+- 仓库不含你的密钥：`.env` 已 gitignore，前端 key 只存访客浏览器。
+- 角色相关图片版权请自行确认。
 
-## 🧪 测试
-
-```bash
-python tests/test_endings.py          # 六结局触发条件（Python 版，不花 API 费用）
-python tools/sync_persona.py --check  # 校验前端人设与 persona.py 同步
-cd web && node tests/game.test.mjs && node tests/sync.test.mjs   # 前端逻辑测试
-node web/tests/smoke.mjs              # 端到端冒烟（真实调用模型，需 QB_KEY 或 .env）
-```
-
-CI（GitHub Actions）会在 Python 3.10 / 3.12 上跑：模块导入自检、`TOOLS`/`FUNCTIONS` 一致性、
-六结局测试；另有一条 Node 流水线检查前端语法与六结局（JS 版）并校验人设同步。
-
-## 🎭 换人设
-
-打开 `persona.py`，整个角色就是里面的 `SYSTEM_PROMPT` 字符串。
-里面写死了世界观锚点、诱拐钩子（愿力探测 → 说出愿望 → 实现许诺 → 代价条款 → 邀请签约）、
-开场方式、用词、篇幅、语言滤镜、禁用什么格式等硬约束——想让它变成别的角色，改这一段就够了。
-改完运行 `python tools/sync_persona.py` 同步到前端（CI 会校验是否同步）。
-
-## 🖼️ 头像与仓库按钮
-
-- 页头与每条 QB 消息都会显示头像，加载顺序为 **`web/qb.png` → `web/qb.jpg` → 内置 `web/qb.svg`**，
-  放哪个都行，无需改代码。
-- 当前仓库内置的头像 `web/qb.png` 由分享者提供的原图 `pics/QB.webp` 生成（256×256、等比缩放、白底居中）。
-- 重新生成头像（需要 `pip install pillow`）：
-
-  ```bash
-  python tools/make_avatar.py                     # pics/QB.webp -> web/qb.png
-  python tools/make_avatar.py 你的图.png web/qb.png 256
-  ```
-
-- 页头右侧有两个按钮：「源码仓库」与 **★ Star**（后者会显示实时星标数：
-  优先走 GitHub API 并缓存 10 分钟，失败时降级为 shields.io 徽章图，`file://` 打开也能显示）。
-- 触发【契约成立】结局时，QB 会亲自讨一枚星标作为"契约见证"——这是设计上的彩蛋，不是弹窗广告。
-- 如需改成你自己的地址，修改 `web/index.html` 里那两个 `<a class="ghbtn">` 的 href 即可。
-- 版权提示：角色相关图片的授权请自行确认，仓库中不包含第三方商业素材；
-  若替换为他人作品，请遵守其许可协议。
-
-## ⚠️ 说明与免责
-
-- 项目里的「劝进土木」是**设定与玩梗**，不是职业建议；数据来自公开检索结果，请自行核实。
-- 定位是 **IP 级城市精度**，受代理/VPN 影响；隐私敏感场景请勿使用。
-- 抓取搜索引擎与 RSS 属于非官方接口，可能因对方改版而失效（代码里都有回退与容错）。
-- 使用时请遵守目标网站的服务条款与你所在地区的法律法规。
-
-## 📄 License
+## License
 
 [MIT](LICENSE) © 2026 LiuQiutong
