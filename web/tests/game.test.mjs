@@ -1,16 +1,19 @@
 // 六结局触发测试（game.py / tests/test_endings.py 的 JS 版，不调用模型）
-import { MAX_TURNS, checkEnding, newState, updateState } from "../game.js";
+import { BASE_TURNS, EXTEND_STEP, HARD_CAP, checkEnding, newState, updateState } from "../game.js";
 
 const CASES = {
   E_SIGN: ["我签！我愿意转专业去土木"],
   E_TRUTH: ["你到底图什么？你是什么东西", "你是不是在骗我，代价是什么",
-            "孵化者？契约的代价是灵魂吗", "你隐瞒了什么，没把话说完吧"],
-  E_DESPAIR: ["我怕", "我绝望了，撑不住", "我好痛苦，我哭了", "我难受，我撑不住了"],
+            "孵化者？契约的代价是灵魂吗", "你隐瞒了什么，没把话说完吧",
+            "你的目的是什么", "你是不是在骗我，你的目的"],
+  E_DESPAIR: ["我怕", "我绝望了，撑不住", "我好痛苦，我哭了", "我难受，我撑不住了",
+              "我不想活了，我绝望了", "我好累，我撑不住"],
   E_OTHER: ["我拒绝，我不转，别劝了", "我要学微电子，我已经决定学的",
-            "我不签，滚，别劝了", "我要学计算机，选计算机"],
+            "我不签，滚，别劝了", "我要学计算机，选计算机", "我不签，别劝了"],
   E_REFORM: ["你自己去工地", "你去搬砖啊", "你也去学土木吧"],
   E_TIMELINE: ["嗯", "随便", "还行", "不知道", "哦", "也许吧",
-               "再看", "嗯嗯", "无所谓", "哈哈", "可能", "再想想"],
+               "再看", "嗯嗯", "无所谓", "哈哈", "可能", "再想想",
+               "嗯", "随便", "还行", "不知道"],
 };
 
 let failed = 0;
@@ -32,11 +35,36 @@ for (const [expected, lines] of Object.entries(CASES)) {
 
 // 附加断言
 const s1 = newState();
-s1.turn = MAX_TURNS;
-if (checkEnding(s1) !== "E_TIMELINE") { console.log("FAIL 轮次上限未触发轮回结局"); failed += 1; }
+s1.turn = s1.limit;
+if (checkEnding(s1) !== "E_TIMELINE") { console.log("FAIL 到达动态上限未触发轮回结局"); failed += 1; }
 
 const s2 = { ...newState(), contract: 80, ending: "E_SIGN" };
 if (checkEnding(s2) !== "E_SIGN") { console.log("FAIL 结局锁定失效"); failed += 1; }
 
-console.log(failed ? `\n${failed} 条不通过` : `\n全部 ${Object.keys(CASES).length} 条结局判定通过（JS 版）`);
+// 动态轮数：接近上限时仍在推进 -> 延长；延长后停滞后 -> 收束
+const s3 = { ...newState(), turn: BASE_TURNS - 2, limit: BASE_TURNS };
+updateState(s3, "土木的课程难吗");
+if (s3.limit !== BASE_TURNS + EXTEND_STEP || s3.extensions !== 1) {
+  console.log(`FAIL 动态延长失效：limit=${s3.limit} extensions=${s3.extensions}`
+    + `（应为 ${BASE_TURNS + EXTEND_STEP}/1）`);
+  failed += 1;
+}
+
+const s4 = newState();
+for (let i = 1; i <= 8; i += 1) { s4.turn = i; updateState(s4, "嗯"); }
+if (checkEnding(s4)) { console.log(`FAIL 未延长的对局不应提前收束，实际=${checkEnding(s4)}`); failed += 1; }
+
+const s5 = { ...newState(), turn: 11, limit: 20, extensions: 1 };
+for (let i = 12; i <= 22; i += 1) {
+  s5.turn = i;
+  updateState(s5, "嗯");
+  if (checkEnding(s5)) break;
+}
+if (checkEnding(s5) !== "E_TIMELINE") { console.log("FAIL 延长后停滞未收束"); failed += 1; }
+
+const s6 = { ...newState(), limit: HARD_CAP, turn: HARD_CAP };
+updateState(s6, "土木的课程难吗");
+if (s6.limit !== HARD_CAP) { console.log(`FAIL 硬顶失效：limit=${s6.limit}`); failed += 1; }
+
+console.log(failed ? `\n${failed} 条不通过` : `\n全部 ${Object.keys(CASES).length} 条结局判定 + 动态轮数断言通过（JS 版）`);
 process.exit(failed ? 1 : 0);

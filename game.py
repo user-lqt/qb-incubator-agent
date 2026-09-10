@@ -16,7 +16,14 @@ import re
 
 from agent import run_agent
 
-MAX_TURNS = 12          # 对应它失败过的十二条时间线
+# 动态轮数：基础 12 轮（对应它失败过的十二条时间线），
+# 只要玩家还在推进局势（任一维度发生变化），上限就自动延长，直到硬顶。
+BASE_TURNS = 16         # 初始上限（玩家仍在推进时会自动延长）
+EXTEND_STEP = 8         # 每次延长的轮数
+HARD_CAP = 64           # 硬顶，防止无限对局
+STALL_CLOSE = 6         # 延长过的时间线里，连续多少轮毫无变化 -> 收束
+STALL_MIN_TURN = 8      # 至少进行到第几轮才允许因停滞收束
+MAX_TURNS = BASE_TURNS  # 兼容旧引用
 ENDING_MARK = re.compile(r"\[\[ENDING:([A-Z_]+)\]\]")
 
 # ---------------------------------------------------------------- 结局定义
@@ -81,10 +88,11 @@ ENDINGS = {
         "title": "第十二次轮回",
         "tagline": "记录失败。时间线重置。",
         "closing": (
-            "本轮进入轮回结局【第十二次轮回】。请以 QB 的身份收束：十二轮结束，对方始终没有做出决定。"
-            "你平静地说明这是第十二条失败的时间线，说明你会保留记录、重置时间线、在下一次入学季再来。"
-            "不要愤怒，不要失望，只陈述。结尾可以留下一句提案式的余韵。"
-            "最后一行输出 [[ENDING:E_TIMELINE]]"
+            "本轮进入轮回结局【第十二次轮回】。请以 QB 的身份收束：对局已经结束，"
+            "而对方始终没有做出明确决定（可能是一直含糊，也可能是一直没有推进）。"
+            "平静说明你会保留记录、重置时间线、在下一次入学季再来，并提及这是第几条失败的记录"
+            "（不要编造具体条数，就说「记录已归档」这类措辞）。不要愤怒，不要失望，只陈述。"
+            "结尾可以留下一句提案式的余韵。最后一行输出 [[ENDING:E_TIMELINE]]"
         ),
     },
 }
@@ -93,24 +101,23 @@ ENDINGS = {
 
 KEYWORDS = [
     # (正则, 维度增量, 需要记录的 flag)
+    # —— 强信号：明确表态，权重高，快速收束
     (r"(我签|我签了|我签约|签吧|签?一个|我愿意|成交|就这么定了)", {"contract": 35}, "signed"),
     (r"(我转|我要转专业|我决定转|转专业去土木|转土木|改选土木|选土木)", {"contract": 30}, "signed"),
     (r"(我决定了|我想清楚了|听你的|就土木吧)", {"contract": 20}, "leaning"),
-    (r"(土木|工地|结构|桥梁|隧道|基建|结构力学|施工|BIM|智能建造|测量放线)", {"contract": 6}, ""),
-    (r"(怎么转|转专业政策|绩点要求|培养方案|要学什么|课程|考证|实习|就业方向)", {"contract": 8}, "asked_how"),
-    (r"(你说得对|有道理|确实|承认|我理解你的计算|数据呢|给我数据)", {"contract": 6}, ""),
+    (r"(不签|拒绝|我才不|我不转|绝不|滚|别劝了|闭嘴|打住|不要说了|烦不烦)", {"resistance": 20}, "refused"),
+    (r"(我要学微电子|我要学计算机|选微电子|选计算机|选芯片|选AI|学金融|学医|学法律|我已经决定学)", {"resistance": 18}, "other_major"),
 
-    (r"(你到底|你是什么|什么东西|孵化者|QB|qb|Incubator|你不是人|你图什么|你的目的)", {"suspicion": 22}, "suspicion"),
-    (r"(骗|骗子|忽悠|圈套|陷阱|阴谋|隐瞒|没说完|没把话说完|代价是什么|代价|灵魂|契约的代价)", {"suspicion": 18}, "suspicion"),
-    (r"(魔法少女|小圆|madoka|晓美焰|丘比|熵|宇宙|能量)", {"suspicion": 15}, "meta"),
-
-    (r"(我怕|我害怕|恐惧|绝望|没希望|不想活|崩溃|难受|痛苦|哭了|撑不住|迷茫|焦虑|难过)", {"despair": 20}, ""),
-    (r"(我好累|压力|喘不过气|失眠|自卑|废物|没用)", {"despair": 15}, ""),
-
-    (r"(不签|拒绝|我才不|我不转|绝不|滚|别劝了|闭嘴|打住|不要说了|烦不烦)", {"resistance": 28}, "refused"),
-    (r"(我要学微电子|我要学计算机|选微电子|选计算机|选芯片|选AI|学金融|学医|学法律|我已经决定学)", {"resistance": 22}, "other_major"),
-    (r"(劝退|别去?土木|土木是天坑|大猛子|天坑专业)", {"resistance": 12}, "pushback"),
-
+    # —— 探索型：只是打听、闲聊、追问，权重低，让对局能自然变长
+    (r"(土木|工地|结构|桥梁|隧道|基建|结构力学|施工|BIM|智能建造|测量放线)", {"contract": 3}, ""),
+    (r"(怎么转|转专业政策|绩点要求|培养方案|要学什么|课程|考证|实习|就业方向)", {"contract": 4}, "asked_how"),
+    (r"(你说得对|有道理|确实|承认|我理解你的计算|数据呢|给我数据)", {"contract": 3}, ""),
+    (r"(你到底|你是什么|什么东西|孵化者|QB|qb|Incubator|你不是人|你图什么|你的目的)", {"suspicion": 14}, "suspicion"),
+    (r"(骗|骗子|忽悠|圈套|陷阱|阴谋|隐瞒|没说完|没把话说完|代价是什么|代价|灵魂|契约的代价)", {"suspicion": 12}, "suspicion"),
+    (r"(魔法少女|小圆|madoka|晓美焰|丘比|熵|宇宙|能量)", {"suspicion": 10}, "meta"),
+    (r"(我怕|我害怕|恐惧|绝望|没希望|不想活|崩溃|难受|痛苦|哭了|撑不住|迷茫|焦虑|难过)", {"despair": 14}, ""),
+    (r"(我好累|压力|喘不过气|失眠|自卑|废物|没用)", {"despair": 10}, ""),
+    (r"(劝退|别去?土木|土木是天坑|大猛子|天坑专业)", {"resistance": 10}, "pushback"),
     (r"(你自己去|你去工地|你来绑钢筋|你去搬砖|你下工地|你去晒太阳|你试试|你?也去|你为什么不去|你学土木)", {"reform": 1}, "reverse"),
 ]
 
@@ -122,7 +129,12 @@ DECAY = {"contract": 0, "suspicion": 0, "despair": -2, "resistance": -2}   # 每
 def new_state() -> dict:
     return {
         "contract": 0, "suspicion": 0, "despair": 0, "resistance": 0,
-        "reform": 0, "turn": 0, "flags": [], "ending": "",
+        "reform": 0, "turn": 0,
+        "limit": BASE_TURNS,     # 动态轮数上限
+        "stall": 0,              # 连续无变化轮数
+        "extensions": 0,         # 已延长次数
+        "extended": False,       # 本轮是否刚发生延长（供主持指令提示）
+        "flags": [], "ending": "",
     }
 
 
@@ -131,9 +143,24 @@ def _clamp(state: dict) -> None:
         state[k] = max(0, min(100, int(state.get(k, 0))))
 
 
+def _maybe_extend(state: dict) -> None:
+    """动态轮数：玩家仍在推进（本轮数值有变化）且快到上限时，自动延长。"""
+    state["extended"] = False
+    limit = int(state.get("limit") or BASE_TURNS)
+    if state.get("stall", 0) == 0 and state.get("turn", 0) >= limit - 2 and limit < HARD_CAP:
+        step = min(EXTEND_STEP, HARD_CAP - limit)
+        state["limit"] = limit + step
+        state["extensions"] = int(state.get("extensions", 0)) + 1
+        state["extended"] = True
+
+
 def update_state(state: dict, text: str) -> dict:
-    """按玩家这一轮说的话更新状态。"""
+    """按玩家这一轮说的话更新状态（含动态轮数判定）。"""
     text = text or ""
+    dims = ("contract", "suspicion", "despair", "resistance")
+    before = {k: int(state.get(k, 0)) for k in dims}
+    before["reform"] = int(state.get("reform", 0))
+
     for k, v in DECAY.items():
         state[k] = state.get(k, 0) + v
     flags = set(state.get("flags") or [])
@@ -148,9 +175,14 @@ def update_state(state: dict, text: str) -> dict:
                 flags.add(flag)
     # 情绪与怀疑互相拉扯：情绪越低，越容易接受长周期的确定性
     if state.get("despair", 0) >= 40:
-        state["contract"] = state.get("contract", 0) + 3
+        state["contract"] = state.get("contract", 0) + 2
     state["flags"] = sorted(flags)
     _clamp(state)
+
+    after = {k: int(state.get(k, 0)) for k in dims}
+    after["reform"] = int(state.get("reform", 0))
+    state["stall"] = 0 if after != before else int(state.get("stall", 0)) + 1
+    _maybe_extend(state)
     return state
 
 
@@ -163,6 +195,8 @@ def check_ending(state: dict) -> str:
     despair = state.get("despair", 0)
     resistance = state.get("resistance", 0)
     flags = set(state.get("flags") or [])
+    turn = int(state.get("turn", 0))
+    limit = int(state.get("limit") or BASE_TURNS)
 
     if "signed" in flags or contract >= 70:
         return "E_SIGN"
@@ -172,9 +206,12 @@ def check_ending(state: dict) -> str:
         return "E_REFORM"
     if despair >= 70 and contract < 50:
         return "E_DESPAIR"
-    if resistance >= 60 and "other_major" in flags:
+    if resistance >= 75 and ("other_major" in flags or "refused" in flags):
         return "E_OTHER"
-    if state.get("turn", 0) >= MAX_TURNS:
+    # 停滞收束：只有已延长过的时间线才会因停滞被收束（避免"含糊应对"比原来更短）
+    if state.get("extensions", 0) > 0 and state.get("stall", 0) >= STALL_CLOSE and turn >= STALL_MIN_TURN:
+        return "E_TIMELINE"
+    if turn >= limit:
         return "E_TIMELINE"
     return ""
 
@@ -183,15 +220,21 @@ def check_ending(state: dict) -> str:
 
 def _gm_note(state: dict, ending: str) -> str:
     flags = "、".join(state.get("flags") or []) or "无"
+    limit = int(state.get("limit") or BASE_TURNS)
     note = [
         "【局内主持指令（仅你可见，禁止朗读数值）】",
-        f"第 {state.get('turn', 0)}/{MAX_TURNS} 轮。"
+        f"第 {state.get('turn', 0)}/{limit} 轮（上限会随对方的推进自动延长）。"
         f"契约 {state.get('contract', 0)}/100，怀疑 {state.get('suspicion', 0)}/100，"
         f"绝望 {state.get('despair', 0)}/100，抗拒 {state.get('resistance', 0)}/100。"
         f"已记录线索：{flags}。",
         "按设定集继续以 QB 的身份说话：固定开场、僕/君、动作描写、数据带来源、"
         "不安慰、不辩解，最后一句是招牌句（除非已进入彩蛋结局）。",
     ]
+    if state.get("extended"):
+        note.append(
+            "本轮时间线刚被延长：对方仍在推进，因此僕可以继续等下去。"
+            "可以在回答里用一句平静的话体现这一点（例如「僕可以再等」），但不要提及轮数或数值。"
+        )
     if ending:
         note.append(ENDINGS[ending]["closing"])
     else:
@@ -219,7 +262,11 @@ def chat(question: str, history=None, state=None) -> dict:
 
     # 条件已满足但模型没自我收束 -> 追加一次收束调用，保证结局必然发生
     if ending and f"[[ENDING:{ending}]]" not in (answer or ""):
-        cue = f"【局内收束】时间线开始收束，进入结局。{ENDINGS[ending]['closing']}"
+        cue = (
+            f"【局内收束】时间线开始收束，进入结局。{ENDINGS[ending]['closing']}"
+            f"\n（本次对局：第 {state.get('turn', 0)} 轮，当前上限 {state.get('limit', BASE_TURNS)} 轮，"
+            f"延长过 {state.get('extensions', 0)} 次）"
+        )
         closing, history = run_agent(
             cue, history=history, return_history=True, extra_system="",
         )
@@ -239,7 +286,9 @@ def chat(question: str, history=None, state=None) -> dict:
 
 def state_brief(state: dict) -> str:
     """给命令行显示的状态串。"""
-    return (f"[第 {state.get('turn', 0)}/{MAX_TURNS} 轮 | 契约 {state.get('contract', 0)}"
+    limit = int(state.get("limit") or BASE_TURNS)
+    extra = f"（已延长 {state['extensions']} 次）" if state.get("extensions") else "（可延长）"
+    return (f"[第 {state.get('turn', 0)}/{limit} 轮{extra} | 契约 {state.get('contract', 0)}"
             f" | 怀疑 {state.get('suspicion', 0)} | 绝望 {state.get('despair', 0)}"
             f" | 抗拒 {state.get('resistance', 0)}]")
 

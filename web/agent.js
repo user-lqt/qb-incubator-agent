@@ -3,7 +3,7 @@
 
 import { SYSTEM_PROMPT } from "./persona.js";
 import { FUNCTIONS, TOOLS, TOOL_AVAILABILITY_NOTE } from "./tools.js";
-import { ENDINGS, MAX_TURNS, checkEnding, gmNote, newState, updateState } from "./game.js";
+import { ENDINGS, BASE_TURNS, checkEnding, gmNote, newState, updateState } from "./game.js";
 
 const DEFAULT_BASE = "https://api.deepseek.com";
 const DEFAULT_MODEL = "deepseek-chat";
@@ -86,7 +86,9 @@ export class QBClient {
     if (this.history.length > 40) this.history.splice(0, this.history.length - 40);
 
     if (ending && !selfConcluded) {
-      const cue = `【局内收束】时间线开始收束，进入结局。${ENDINGS[ending].closing}`;
+      const cue = `【局内收束】时间线开始收束，进入结局。${ENDINGS[ending].closing}`
+        + `\n（本次对局：第 ${this.state.turn} 轮，当前上限 ${this.state.limit || BASE_TURNS} 轮，`
+        + `延长过 ${this.state.extensions || 0} 次）`;
       let closing = await this._run(cue, "");
       const hasMark = new RegExp(`\\[\\[ENDING:${ending}\\]\\]`).test(closing);
       closing = closing.replace(/\[\[ENDING:[A-Z_]+\]\]/g, "").trim();
@@ -98,7 +100,7 @@ export class QBClient {
     }
 
     return {
-      answer, state: { ...this.state, max_turns: MAX_TURNS }, ending,
+      answer, state: { ...this.state, max_turns: this.state.limit || BASE_TURNS }, ending,
       ending_title: ending ? ENDINGS[ending].title : "",
       ending_tagline: ending ? ENDINGS[ending].tagline : "",
     };

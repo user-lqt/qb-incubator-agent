@@ -19,6 +19,9 @@
   header .sp { margin-left:auto; }
   header button { border:0; border-radius:8px; padding:7px 12px; background:var(--pink); color:#3a2030;
                   font:inherit; font-weight:600; cursor:pointer; }
+  #keyState { font-size:12px; padding:4px 9px; border-radius:999px; background:#f3e8ee; color:#7b6270; white-space:nowrap; }
+  #keyState.ok { background:#e8f7ee; color:#1f7a45; }
+  #keyState.bad { background:#fff0f6; color:#b3356b; }
   #bars { display:none; gap:14px; padding:10px 18px; background:#fff; border-bottom:1px solid var(--line);
           position:sticky; top:60px; z-index:4; flex-wrap:wrap; font-size:12px; color:#7b6270; }
   #bars .m { display:flex; align-items:center; gap:6px; }
@@ -54,6 +57,7 @@
     <option value="deepseek-reasoner">deepseek-reasoner</option>
   </select>
   <span class="sp"></span>
+  <span id="keyState" class="bad">未配置 key</span>
   <button id="save">保存 key</button>
 </header>
 
@@ -63,7 +67,8 @@
 <main><div id="log">
   <div class="b qb">嗯——僕在。
 先填写你自己的 DeepSeek API key（只存在这台设备的浏览器里，不会上传到任何服务器）。
-这一局共十二轮，六个结局。要不要签，由君决定。</div>
+这一局从十二轮起算，但只要你还在推进，僕就会继续等下去——上限会自己往后延长。
+要不要签，由君决定。</div>
 </div></main>
 <div class="hint">提示：浏览器版可用工具为 天气 / IP 定位 / 英文科技资讯 / 时间 / 计算；中文搜索与行业报告检索在 Python 版里。</div>
 
@@ -104,7 +109,8 @@ function renderBars(state) {
               metric("绝望", state.despair), metric("抗拒", state.resistance));
   const t = document.createElement("div");
   t.className = "m";
-  t.textContent = `第 ${state.turn}/${state.max_turns} 轮`;
+  const ext = state.extensions ? `已延长 ${state.extensions} 次` : "可延长";
+  t.textContent = `第 ${state.turn}/${state.max_turns} 轮（${ext}）`;
   bars.appendChild(t);
 }
 
@@ -121,12 +127,23 @@ function buildClient() {
   return new QBClient({ apiKey, model: modelSelect.value });
 }
 
+function refreshKeyState() {
+  const has = !!keyInput.value.trim();
+  const el = $("keyState");
+  el.textContent = has ? "key 已就绪" : "未配置 key";
+  el.className = has ? "ok" : "bad";
+  $("send").disabled = !has;
+  $("q").placeholder = has
+    ? "输入问题，Enter 发送（Shift+Enter 换行）"
+    : "请先在右上角填入你自己的 DeepSeek API key";
+}
+
 async function ask() {
   const text = $("q").value.trim();
   if (!text) return;
   if (!client) {
     client = buildClient();
-    if (!client) { add("sys", "请先填写自己的 DeepSeek API key（右上角）。"); return; }
+    if (!client) { add("sys", "请先在右上角填入自己的 DeepSeek API key（在 platform.deepseek.com 申请），点「保存 key」后即可开始。"); return; }
   }
   add("me", text);
   $("q").value = "";
@@ -161,12 +178,26 @@ $("save").onclick = () => {
   localStorage.setItem("qb_key", keyInput.value.trim());
   localStorage.setItem("qb_model", modelSelect.value);
   client = buildClient();
-  add("sys", client ? "key 已保存在本机浏览器（authorization 只在请求模型时使用）。" : "key 为空。");
+  refreshKeyState();
+  add("sys", client
+    ? "key 已保存在本机浏览器（只在请求模型时作为 authorization 使用，不上传到任何第三方服务器）。现在可以直接提问了。"
+    : "key 是空的。去 platform.deepseek.com 申请一个 sk- 开头的 key，粘到右上角输入框。");
 };
 
 keyInput.value = localStorage.getItem("qb_key") || "";
 modelSelect.value = localStorage.getItem("qb_model") || "deepseek-chat";
+keyInput.addEventListener("input", refreshKeyState);
+keyInput.addEventListener("change", () => {
+  localStorage.setItem("qb_key", keyInput.value.trim());
+  client = buildClient();
+  refreshKeyState();
+});
+modelSelect.addEventListener("change", () => {
+  localStorage.setItem("qb_model", modelSelect.value);
+  client = buildClient();
+});
 client = buildClient();
+refreshKeyState();
 $("q").addEventListener("keydown", (e) => {
   if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); ask(); }
 });
