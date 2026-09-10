@@ -44,8 +44,15 @@
           border-bottom:1px solid var(--line); z-index:4; flex-wrap:wrap; font-size:12px; color:#7b6270; }
   #bars .m { display:flex; align-items:center; gap:6px; }
   #bars .m b.dv { color:#c2376b; font-weight:700; }
-  #bars .track { width:74px; height:6px; border-radius:3px; background:#f3e8ee; overflow:hidden; }
-  #bars .fill { height:100%; width:0; background:var(--pink); transition:width .35s; }
+  #bars .track { display:inline-block; width:86px; height:8px; border-radius:4px; background:#efe2ea;
+                 overflow:hidden; box-shadow:inset 0 1px 2px rgba(150,110,130,.12); }
+  #bars .fill { display:block; height:100%; width:0; border-radius:4px;
+                transition:width .35s, background .35s; }
+  /* 四个维度各用一种颜色，方便一眼看出哪条在动 */
+  #bars .fill.contract  { background:linear-gradient(90deg,#ffb3d3,#ff8bbd); }
+  #bars .fill.suspicion { background:linear-gradient(90deg,#c9a1f5,#a877e8); }
+  #bars .fill.despair   { background:linear-gradient(90deg,#a9b6d6,#8095c4); }
+  #bars .fill.resistance{ background:linear-gradient(90deg,#f08a9c,#d64f68); }
   #bars .fill.pulse { animation: fillPulse .9s ease-out; }
   @keyframes fillPulse {
     0% { box-shadow:0 0 0 0 rgba(255,158,199,.85); }
@@ -195,12 +202,16 @@ function add(cls, text) {
   return wrap;
 }
 
-function metric(label, value, changed, prevValue) {
+function metric(key, label, value, changed, prevValue) {
   const m = document.createElement("div");
   m.className = "m";
+  m.title = `${label}：${value}/100` + (changed ? `（本轮 ${value - prevValue >= 0 ? "+" : ""}${value - prevValue}）` : "");
   const delta = changed ? ` <b class="dv">${value >= prevValue ? "+" : ""}${value - prevValue}</b>` : "";
+  // 非零值给个最小宽度，避免 1~5 分时细得像没有
+  const minW = value > 0 ? "min-width:6px;" : "";
   m.innerHTML = `<span>${label} ${value}${delta}</span>`
-    + `<span class="track"><span class="fill${changed ? " pulse" : ""}" style="width:${value}%"></span></span>`;
+    + `<span class="track"><span class="fill ${key}${changed ? " pulse" : ""}"`
+    + ` style="width:${value}%;${minW}"></span></span>`;
   return m;
 }
 
@@ -218,13 +229,13 @@ function renderBars(state) {
   bars.style.display = "flex";
   bars.innerHTML = "";
   const pairs = [
-    ["契约", state.contract, prev.contract],
-    ["怀疑", state.suspicion, prev.suspicion],
-    ["绝望", state.despair, prev.despair],
-    ["抗拒", state.resistance, prev.resistance],
+    ["contract", "契约", state.contract, prev.contract],
+    ["suspicion", "怀疑", state.suspicion, prev.suspicion],
+    ["despair", "绝望", state.despair, prev.despair],
+    ["resistance", "抗拒", state.resistance, prev.resistance],
   ];
-  for (const [label, value, prevValue] of pairs) {
-    bars.appendChild(metric(label, value, value !== prevValue, prevValue));
+  for (const [key, label, value, prevValue] of pairs) {
+    bars.appendChild(metric(key, label, value, value !== prevValue, prevValue));
   }
   const t = document.createElement("div");
   t.className = "m";

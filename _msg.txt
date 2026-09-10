@@ -1,0 +1,7 @@
+feat(web): 状态条四色区分 + 加宽加高 + 非零保底宽度
+
+- 修根因：.fill 是 <span>（display:inline），设了 width 也不生效，导致填充从不渲染，
+  看起来"颜色永远不变"；改为 display:block，track 改 display:inline-block
+- 四个维度各用一种渐变色：契约粉 / 怀疑紫 / 绝望蓝灰 / 抗拒红，一眼看出哪条在动
+- 轨道 74x6 -> 86x8，非零值给 min-width:6px，1~5 分也看得见
+- 悬停显示 tooltip（维度名 + 当前值 + 本轮增量）
