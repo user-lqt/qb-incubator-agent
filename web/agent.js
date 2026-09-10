@@ -1,9 +1,13 @@
 // 浏览器版 Agent 内核：与 agent.py 同样的「思考 → 调工具 → 观察」循环，
 // 只是把 HTTP 客户端从 openai SDK 换成 fetch，并且自带结局玩法（game.js）。
 
-import { SYSTEM_PROMPT } from "./persona.js";
-import { FUNCTIONS, TOOLS, TOOL_AVAILABILITY_NOTE } from "./tools.js";
-import { ENDINGS, BASE_TURNS, checkEnding, gmNote, newState, updateState } from "./game.js";
+// 注意：资源版本号要与 index.html 里的 V 保持一致，避免"新代码 + 旧缓存模块"混搭
+const V = "?v=9";
+
+const { SYSTEM_PROMPT } = await import("./persona.js" + V);
+const { FUNCTIONS, TOOLS, TOOL_AVAILABILITY_NOTE } = await import("./tools.js" + V);
+const gameMod = await import("./game.js" + V);
+const { ENDINGS, BASE_TURNS, checkEnding, gmNote, newState, updateState } = gameMod;
 
 const DEFAULT_BASE = "https://api.deepseek.com";
 const DEFAULT_MODEL = "deepseek-chat";

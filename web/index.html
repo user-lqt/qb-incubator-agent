@@ -101,6 +101,11 @@
 <div id="banner"></div>
 
 <main><div id="log"></div></main>
+<noscript>
+  <div style="max-width:840px;margin:18px auto;padding:0 18px;color:#7a3355">
+    这个页面需要 JavaScript 才能运行（模型调用在浏览器里完成）。请允许本站脚本后刷新。
+  </div>
+</noscript>
 <div class="hint">提示：浏览器版可用工具为 天气 / IP 定位 / 英文科技资讯 / 时间 / 计算；中文搜索与行业报告检索在 Python 版里。</div>
 
 <footer><div class="row">
@@ -109,13 +114,25 @@
 </div></footer>
 
 <script type="module">
-import { QBClient } from "./agent.js";
-import { BASE_TURNS, HARD_CAP, PROLOGUE, describeDelta } from "./game.js";
+// v 是资源版本号：每次改动 web/ 下的 js，把它 +1，可避免"新页面 + 旧缓存模块"导致白屏
+const V = "?v=9";
+const { QBClient } = await import("./agent.js" + V);
+const { BASE_TURNS, HARD_CAP, PROLOGUE, describeDelta } = await import("./game.js" + V);
 
 const $ = (id) => document.getElementById(id);
 const log = $("log"), keyInput = $("key"), modelSelect = $("model");
 
 let client = null;
+
+// 兜底：脚本一旦出错（旧缓存模块、网络问题等），在页面上写出原因，避免整页空白
+function bootFail(msg) {
+  const box = document.createElement("div");
+  box.className = "b sys";
+  box.textContent = `页面没能启动：${msg}\n按 Ctrl+F5 强制刷新可清掉旧缓存；仍有问题请到仓库提 Issue。`;
+  document.body.appendChild(box);
+}
+window.addEventListener("error", (e) => bootFail(e.message || "未知脚本错误"));
+window.addEventListener("unhandledrejection", (e) => bootFail(String(e.reason || "未知错误")));
 
 // 头像加载链：优先 qb.png（可自行替换），再试 qb.jpg，最后回退内置矢量图 qb.svg
 const AVATAR_CHAIN = ["./qb.png", "./qb.jpg", "./qb.svg"];
