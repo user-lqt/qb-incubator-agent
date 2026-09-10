@@ -1,5 +1,9 @@
 # 孵化者 QB · 一个只会劝你学土木的 Agent
 
+[![CI](https://github.com/user-lqt/qb-incubator-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/user-lqt/qb-incubator-agent/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-pink.svg)](LICENSE)
+[![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org/)
+
 > 「和我签订契约，成为土木少女吧。」
 
 一个 **100 行核心代码**的极简 Agent：模型 + 工具 + 循环，三层结构全部透明可读。
@@ -163,17 +167,28 @@ messages = [system 人设, 你的问题]
 ## 📁 项目结构
 
 ```
-agent.py          # 94 行核心：主循环 + 命令行入口
+agent.py          # 93 行核心：主循环 + 命令行入口（含 --game 对局模式）
 game.py           # 结局玩法：四维状态机 + 六个结局 + 收束调用
 persona.py        # 人设与行为守则（换角色只改这里）
 tools.py          # 工具车间：函数实现 + FUNCTIONS 电话本 + TOOLS 菜单
-serve.py          # 网页版服务（纯标准库 HTTP + 内嵌聊天页）
+serve.py          # 网页版服务（纯标准库 HTTP + 内嵌聊天页 + 状态条/结局横幅）
 docs/qb-设定集.md  # 世界观圣经：动机、行为逻辑、语言公式、结局规则
+tests/test_endings.py            # 六结局触发测试（不调模型、不需要 key）
+.github/workflows/ci.yml         # CI：导入自检 + 注册表一致性 + 结局测试
 requirements.txt  # 依赖（openai、python-dotenv、tzdata）
 .env.example      # 配置模板（复制成 .env 并填 key）
 setup.bat / run.bat / serve.bat   # Windows 一键脚本
 使用说明.md        # 给同学看的玩法说明
 ```
+
+## 🧪 测试
+
+```bash
+python tests/test_endings.py     # 六结局触发条件（纯状态机，不花 API 费用）
+```
+
+CI（GitHub Actions）会在 Python 3.10 / 3.12 上跑三件事：模块导入自检、
+`TOOLS` 菜单与 `FUNCTIONS` 电话本的一致性校验、以及六结局触发测试。
 
 ## 🎭 换人设
 

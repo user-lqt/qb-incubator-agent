@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+
+jobs:
+  smoke:
+    name: 导入自检 + 结局状态机测试（py${{ matrix.python-version }}）
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: [ "3.10", "3.12" ]
+    env:
+      # 仅用于让 OpenAI 客户端完成构造；CI 不发起任何模型请求
+      DEEPSEEK_API_KEY: sk-ci-dummy-not-a-real-key
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: 安装依赖
+        run: pip install -r requirements.txt
+
+      - name: 模块导入自检（不联网、不调用模型）
+        run: |
+          python -c "import agent, persona, tools, game, serve; print('imports ok')"
+
+      - name: 工具注册表完整性
+        run: |
+          python - <<'PY'
+          import tools
+          missing = [t['function']['name'] for t in tools.TOOLS
+                     if t['function']['name'] not in tools.FUNCTIONS]
+          assert not missing, f'TOOLS 里登记了但 FUNCTIONS 里没有: {missing}'
+          unused = set(tools.FUNCTIONS) - {t['function']['name'] for t in tools.TOOLS}
+          assert not unused, f'FUNCTIONS 里有但 TOOLS 里没登记: {unused}'
+          print(f"工具 {len(tools.FUNCTIONS)} 个，菜单与电话本一致")
+          PY
+
+      - name: 六结局触发测试
+        run: python tests/test_endings.py
