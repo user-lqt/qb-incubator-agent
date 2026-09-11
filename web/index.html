@@ -158,14 +158,15 @@
 
 <script type="module">
 // v 是资源版本号：每次改动 web/ 下的 js，把它 +1，可避免"新页面 + 旧缓存模块"导致白屏
-const V = "?v=15";
+const V = "?v=16";
 const { QBClient } = await import("./agent.js" + V);
-const { BASE_TURNS, HARD_CAP, PROLOGUE, describeDelta } = await import("./game.js" + V);
+const { BASE_TURNS, HARD_CAP, PROLOGUE, describeDelta, fallbackChoices } = await import("./game.js" + V);
 
 const $ = (id) => document.getElementById(id);
 const log = $("log"), keyInput = $("key"), modelSelect = $("model");
 
 let client = null;
+let pendingSession = null;      // 已存档但还没灌进 client 的会话（没填 key 时先留着）
 
 // 兜底：脚本一旦出错（旧缓存模块、网络问题等），在页面上写出原因，避免整页空白
 function bootFail(msg) {
@@ -290,9 +291,23 @@ function showChoices(list, dirs) {
     btn.className = "choice";
     btn.type = "button";
     btn.textContent = text;
+    btn.dataset.dir = dir || "";
     btn.onclick = () => ask(text, dir);
     box.appendChild(btn);
   });
+  if (!box.childElementCount) {
+    // 极端情况：选项全被过滤/为空 -> 用兜底话术，保证界面上总有可点的东西
+    const fb = fallbackChoices(client && client.state ? client.state : emptyState());
+    for (const c of fb) {
+      const btn = document.createElement("button");
+      btn.className = "choice";
+      btn.type = "button";
+      btn.textContent = c.text;
+      btn.dataset.dir = c.dir || "";
+      btn.onclick = () => ask(c.text, c.dir);
+      box.appendChild(btn);
+    }
+  }
   if (!box.childElementCount) return;
   log.appendChild(box);
   const scroller = document.querySelector("main");
@@ -302,6 +317,101 @@ function showChoices(list, dirs) {
 function clearChoices() {
   const old = document.getElementById("choiceBox");
   if (old) old.remove();
+}
+
+// ---------------- 会话自动存档 / 刷新恢复 ----------------
+const SESSION_KEY = "qb_session";
+const LOG_LIMIT = 60;        // 存档里最多保留多少条界面消息
+
+/** 把当前界面消息序列化成可复原的数据 */
+function logToData() {
+  const items = [];
+  for (const node of log.children) {
+    if (node.id === "choiceBox") {
+      items.push({
+        kind: "choices",
+        buttons: [...node.querySelectorAll("button")].map((b) => ({ text: b.textContent, dir: b.dataset.dir || "" })),
+      });
+      continue;
+    }
+    if (!node.classList || !node.classList.contains("msg")) continue;
+    const kind = node.classList.contains("from-me") ? "me"
+      : node.classList.contains("from-qb") ? "qb" : "sys";
+    const bubble = node.querySelector(".b");
+    if (bubble) items.push({ kind, text: bubble.textContent });
+  }
+  return items.slice(-LOG_LIMIT);
+}
+
+/** 用存档数据重建界面 */
+function renderFromData(items) {
+  log.innerHTML = "";
+  for (const it of items || []) {
+    if (it.kind === "choices") { showChoices(it.buttons || []); continue; }
+    if (it.text) add(it.kind, it.text);
+  }
+}
+
+function saveSession() {
+  try {
+    if (!client) return;
+    const banner = document.getElementById("banner");
+    const payload = {
+      v: 3,
+      savedAt: Date.now(),
+      session: client.serialize(),
+      log: logToData(),
+      prevState: prevState,
+      banner: banner && banner.style.display === "block" ? banner.innerHTML : "",
+    };
+    localStorage.setItem(SESSION_KEY, JSON.stringify(payload));
+  } catch { /* 隐私模式下可能写不进去，忽略 */ }
+}
+
+function loadSession() {
+  try {
+    const raw = localStorage.getItem(SESSION_KEY);
+    if (!raw) return null;
+    const data = JSON.parse(raw);
+    return (data && data.v === 3) ? data : null;
+  } catch {
+    return null;
+  }
+}
+
+function clearSession() {
+  try { localStorage.removeItem(SESSION_KEY); } catch { /* 忽略 */ }
+}
+
+function restoreSession() {
+  const data = loadSession();
+  if (!data) return false;
+  // 1) 先恢复界面（不依赖 API key）：气泡、状态条、结局横幅
+  renderFromData(data.log);
+  prevState = data.prevState || { ...emptyState() };
+  renderBars({ ...prevState, max_turns: (prevState && prevState.limit) || BASE_TURNS });
+  if (data.banner) {
+    const banner = document.getElementById("banner");
+    banner.style.display = "block";
+    banner.innerHTML = data.banner;
+  }
+  // 2) 会话（history + state）先存着：等 key 就绪后再灌进 client，这样没填 key 也能看到上次的对话
+  pendingSession = data.session || null;
+  if (client && pendingSession && client.restore(pendingSession)) pendingSession = null;
+  const mins = Math.max(0, Math.round((Date.now() - (data.savedAt || Date.now())) / 60000));
+  add("sys", `已恢复上次对话（${mins} 分钟前的存档，第 ${(data.prevState && data.prevState.turn) || 0} 轮）。`
+    + (pendingSession ? "填入 API key 后即可接着玩；" : "")
+    + "点「重新开始」可清空记录开新局。");
+  return true;
+}
+
+/** key 就绪后，把待恢复的会话灌进 client */
+function attachPendingSession(target) {
+  if (target && pendingSession && target.restore(pendingSession)) {
+    pendingSession = null;
+    return true;
+  }
+  return false;
 }
 
 const STAR_API = "https://api.github.com/repos/user-lqt/qb-incubator-agent";
@@ -327,7 +437,9 @@ async function loadStars() {
 function buildClient() {
   const apiKey = keyInput.value.trim();
   if (!apiKey) return null;
-  return new QBClient({ apiKey, model: modelSelect.value });
+  const c = new QBClient({ apiKey, model: modelSelect.value });
+  attachPendingSession(c);      // 已存档的会话在这里接上
+  return c;
 }
 
 function autoGrow(el) {
@@ -368,6 +480,7 @@ async function ask(preset, intent) {
     prevState = { ...r.state };
     showEnding(r.ending_title, r.ending_tagline);
     if (!r.ending) showChoices(r.choices, r.choiceDirs || []);
+    saveSession();
   } catch (e) {
     waiting.remove();
     add("sys", "出错了：" + e.message + "（检查 key、余额与网络；跨域失败请换用本地 http 服务器打开本页）");
@@ -379,6 +492,8 @@ async function ask(preset, intent) {
 
 $("send").onclick = ask;
 $("reset").onclick = () => {
+  clearSession();
+  pendingSession = null;
   client = buildClient() || new QBClient({ apiKey: "dummy", model: modelSelect.value });
   client.reset();
   log.innerHTML = "";
@@ -387,7 +502,7 @@ $("reset").onclick = () => {
   lastState = null;
   prevState = emptyState();
   renderBars(emptyState());
-  add("sys", "时间线已重置。第十二次轮回开始——或者，是第十三次。");
+  add("sys", "记录已清空。新的一条时间线开始——或者，是第十三条。");
   add("qb", PROLOGUE);
   if (!keyInput.value.trim()) {
     add("sys", "先在右上角填入你自己的 DeepSeek API key（只存这台设备的浏览器），再开始对话。");
@@ -419,19 +534,26 @@ modelSelect.addEventListener("change", () => {
 client = buildClient();
 refreshKeyState();
 wireAvatar($("avatar"));
-renderBars(emptyState());   // 进页面就显示四条状态，别等第一次提问才出现
 loadStars();                // 取一次星标数（有缓存，失败就静默降级）
+// 有存档就恢复上次对话，没有才播放序章
+const restored = restoreSession();
+if (!restored) {
+  renderBars(emptyState());
+  add("qb", PROLOGUE);
+  add("sys", keyInput.value.trim()
+    ? `这一局上限 ${BASE_TURNS} 轮，只要君还在推进，僕就会继续等下去（最多 ${HARD_CAP} 轮）。要不要签，由君决定。`
+    : "先在右上角填入你自己的 DeepSeek API key（只存这台设备的浏览器，不会被上传），再开始对话。");
+}
 // 版本标签：一眼看出当前跑的是哪一版（排查缓存混搭用）
 (function showVersion() {
   const el = $("verLabel");
-  if (el) el.textContent = `当前页面版本 ${V.replace("?v=", "v")}（若行为异常请 Ctrl+Shift+R 强刷）`;
+  if (el) {
+    el.textContent = `当前页面版本 ${V.replace("?v=", "v")}｜对话自动保存在本机，刷新可恢复`
+      + "（行为异常请 Ctrl+Shift+R 强刷）";
+  }
 })();
 
-// 开场：世界观序章 + 上手提示（序章文本来自 game.js，与命令行版同源）
-add("qb", PROLOGUE);
-add("sys", keyInput.value.trim()
-  ? `这一局上限 ${BASE_TURNS} 轮，只要君还在推进，僕就会继续等下去（最多 ${HARD_CAP} 轮）。要不要签，由君决定。`
-  : "先在右上角填入你自己的 DeepSeek API key（只存这台设备的浏览器，不会被上传），再开始对话。");
+// 开场：有存档则恢复，否则由上面的分支播放序章
 $("q").addEventListener("keydown", (e) => {
   if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); ask(); }
 });

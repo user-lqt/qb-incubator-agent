@@ -272,6 +272,12 @@ export function toChoicePayload(rich) {
   return { texts: pairs.map(([t]) => t), dirs: pairs.map(([, d]) => d) };
 }
 
+/** 过滤出可用的富选项（空文本、脏数据都丢掉） */
+export function sanitizeChoices(rich) {
+  const { texts, dirs } = toChoicePayload(rich);
+  return texts.map((text, i) => ({ text, dir: dirs[i] || "" }));
+}
+
 const DECAY = { despair: -2, resistance: -2 };
 
 // ---------------------------------------------------------------- 语义评分（模型打分）

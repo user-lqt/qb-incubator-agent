@@ -2,7 +2,8 @@
 // 只是把 HTTP 客户端从 openai SDK 换成 fetch，并且自带结局玩法（game.js）。
 
 // 注意：资源版本号要与 index.html 里的 V 保持一致，避免"新代码 + 旧缓存模块"混搭
-const V = "?v=15";
+const V = "?v=16";
+const SESSION_SCHEMA = 3;      // 存档结构版本：改结构时 +1，旧存档会被安全丢弃
 
 const { SYSTEM_PROMPT } = await import("./persona.js" + V);
 const { FUNCTIONS, TOOLS, TOOL_AVAILABILITY_NOTE } = await import("./tools.js" + V);
@@ -49,6 +50,20 @@ export class QBClient {
   reset() {
     this.history = [];
     this.state = newState();
+  }
+
+  /** 导出会话（供刷新后恢复）：对话记录 + 局内状态 */
+  serialize() {
+    return { v: SESSION_SCHEMA, history: this.history, state: this.state };
+  }
+
+  /** 从存档恢复会话；schema 不匹配时返回 false（不冒险用旧结构） */
+  restore(data) {
+    if (!data || data.v !== SESSION_SCHEMA) return false;
+    this.history = Array.isArray(data.history) ? data.history : [];
+    this.state = { ...newState(), ...(data.state || {}) };
+    if (!Array.isArray(this.state.flags)) this.state.flags = [];
+    return true;
   }
 
   async _chat(messages, tools) {
@@ -219,7 +234,9 @@ export class QBClient {
 
     // 向后兼容：choices 一律回传**纯字符串**（旧版页面也能正确显示），
     // 倾向单独放在 choiceDirs 里，新页面按索引取用。
-    const rich = finalChoices.length ? finalChoices : fallbackChoices(this.state);
+    // 关键：若模型给的选项被清洗后为空，必须回退到兜底模板，否则界面上什么都不显示。
+    let rich = gameMod.sanitizeChoices(finalChoices);
+    if (!rich.length) rich = fallbackChoices(this.state);
     const { texts, dirs } = gameMod.toChoicePayload(rich);
     return {
       answer, state: { ...this.state, max_turns: this.state.limit || BASE_TURNS }, ending,

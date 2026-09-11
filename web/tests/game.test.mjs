@@ -1,7 +1,8 @@
 // 六结局触发测试（game.py / tests/test_endings.py 的 JS 版，不调用模型）
 import { BASE_TURNS, DELTA_LIMIT, EXTEND_STEP, HARD_CAP, PROLOGUE, RESOLVE_AT, checkEnding, describeDelta, newState, updateState,
          parseStateMarker, applyModelState, snapshotOf, applyTurnState, tension, gmNote, toChoicePayload,
-         disclosureStage, detectLeak, parseChoices, fallbackChoices } from "../game.js";
+         disclosureStage, detectLeak, parseChoices, fallbackChoices, sanitizeChoices } from "../game.js";
+import { QBClient } from "../agent.js";
 
 const CASES = {
   E_SIGN: ["我签！我愿意转专业去土木"],
@@ -250,6 +251,22 @@ if (mixed.texts.join("|") !== "纯字符串|对象形态|短键形态" || mixed.
 const dirty = toChoicePayload(["[object Object]", { text: "[object Object]", dir: "contract" }, "正常一条"]);
 if (dirty.texts.length !== 1 || dirty.texts[0] !== "正常一条") {
   console.log(`FAIL 脏选项未被过滤：${JSON.stringify(dirty)}`); failed += 1;
+}
+
+// ---- 会话存档：serialize / restore 往返 ----
+const saved = new QBClient({ apiKey: "sk-test", model: "deepseek-chat" });
+saved.history = [{ role: "user", content: "上次的问题" }, { role: "assistant", content: "上次的回答" }];
+saved.state.turn = 5;
+saved.state.contract = 42;
+const dump = JSON.parse(JSON.stringify(saved.serialize()));
+const revived = new QBClient({ apiKey: "sk-test", model: "deepseek-chat" });
+if (!revived.restore(dump)) { console.log("FAIL 存档恢复失败"); failed += 1; }
+if (revived.history.length !== 2 || revived.state.contract !== 42 || revived.state.turn !== 5) {
+  console.log(`FAIL 恢复内容不正确：history=${revived.history.length} `
+    + `contract=${revived.state.contract} turn=${revived.state.turn}`); failed += 1;
+}
+if (new QBClient({ apiKey: "sk-test" }).restore({ v: 999, history: [], state: {} })) {
+  console.log("FAIL 旧 schema 存档应被拒绝"); failed += 1;
 }
 
 console.log(failed ? `\n${failed} 条不通过` : `\n全部 ${Object.keys(CASES).length} 条结局判定 + 动态轮数断言通过（JS 版）`);
