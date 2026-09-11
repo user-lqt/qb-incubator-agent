@@ -1,0 +1,15 @@
+fix(web): 双保险修 [object Object]（数据兼容层 + textContent 垫片 + 版本可见）
+
+背景：用户两次看到选项渲染成 [object Object]。线上文件与本地一致，根因是
+**浏览器缓存了旧版 index.html/agent.js**（旧 JS 返回对象、旧页面把对象当文本）。
+
+本次三重保险：
+1. 数据兼容层（上一提交）：choices 一律回传纯字符串，倾向另放 choiceDirs，
+   使新版 JS 配旧版页面也不会出 [object Object]。
+2. textContent 垫片（新增）：agent.js 载入时包装 Node.prototype.textContent 的 setter，
+   遇到对象自动取 text/t/标签字段，取不到就降级为 JSON —— 即使页面是被缓存的旧版，
+   只要它能加载到本文件，按钮也不会再显示 [object Object]。
+3. 版本可见：页面提示行显示"当前页面版本 v15"，以后排查缓存混搭一眼可辨。
+
+实测（无头 Chrome，模拟旧页面把对象直接写进 textContent）：
+  渲染结果 = 我想先知道代价是什么｜短键也能认｜{"nothing":1}｜纯字符串  → 无 [object Object]

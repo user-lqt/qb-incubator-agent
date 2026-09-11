@@ -148,7 +148,8 @@
     这个页面需要 JavaScript 才能运行（模型调用在浏览器里完成）。请允许本站脚本后刷新。
   </div>
 </noscript>
-<div class="hint">提示：浏览器版可用工具为 天气 / IP 定位 / 英文科技资讯 / 时间 / 计算；中文搜索与行业报告检索在 Python 版里。</div>
+<div class="hint">提示：浏览器版可用工具为 天气 / IP 定位 / 英文科技资讯 / 时间 / 计算；中文搜索与行业报告检索在 Python 版里。
+  <span id="verLabel" style="color:#b3356b">页面版本载入中…</span></div>
 
 <footer><div class="row">
   <textarea id="q" placeholder="输入问题，Enter 发送" rows="1"></textarea>
@@ -157,7 +158,7 @@
 
 <script type="module">
 // v 是资源版本号：每次改动 web/ 下的 js，把它 +1，可避免"新页面 + 旧缓存模块"导致白屏
-const V = "?v=14";
+const V = "?v=15";
 const { QBClient } = await import("./agent.js" + V);
 const { BASE_TURNS, HARD_CAP, PROLOGUE, describeDelta } = await import("./game.js" + V);
 
@@ -420,6 +421,11 @@ refreshKeyState();
 wireAvatar($("avatar"));
 renderBars(emptyState());   // 进页面就显示四条状态，别等第一次提问才出现
 loadStars();                // 取一次星标数（有缓存，失败就静默降级）
+// 版本标签：一眼看出当前跑的是哪一版（排查缓存混搭用）
+(function showVersion() {
+  const el = $("verLabel");
+  if (el) el.textContent = `当前页面版本 ${V.replace("?v=", "v")}（若行为异常请 Ctrl+Shift+R 强刷）`;
+})();
 
 // 开场：世界观序章 + 上手提示（序章文本来自 game.js，与命令行版同源）
 add("qb", PROLOGUE);

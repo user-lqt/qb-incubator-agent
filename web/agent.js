@@ -2,7 +2,7 @@
 // 只是把 HTTP 客户端从 openai SDK 换成 fetch，并且自带结局玩法（game.js）。
 
 // 注意：资源版本号要与 index.html 里的 V 保持一致，避免"新代码 + 旧缓存模块"混搭
-const V = "?v=14";
+const V = "?v=15";
 
 const { SYSTEM_PROMPT } = await import("./persona.js" + V);
 const { FUNCTIONS, TOOLS, TOOL_AVAILABILITY_NOTE } = await import("./tools.js" + V);
@@ -14,6 +14,27 @@ const { ENDINGS, BASE_TURNS, checkEnding, gmNote, newState, updateState,
 
 const DEFAULT_BASE = "https://api.deepseek.com";
 const DEFAULT_MODEL = "deepseek-chat";
+
+// 兼容垫片：老页面（浏览器缓存的旧版）会把选项对象直接写进 textContent，
+// 于是显示成 [object Object]。这里包装 textContent 的 setter，遇到对象就取其中的文字字段，
+// 这样无论 HTML 与 JS 是哪两个版本混搭，玩家都不会再看到 [object Object]。
+(function installTextShim() {
+  try {
+    const desc = Object.getOwnPropertyDescriptor(Node.prototype, "textContent");
+    if (!desc || !desc.set || desc.set.__dshShim) return;
+    const setter = function (value) {
+      if (value && typeof value === "object" && !(value instanceof Node)) {
+        const t = value.text ?? value.t ?? value.label ?? value.title;
+        value = (typeof t === "string" && t) ? t : (() => {
+          try { return JSON.stringify(value); } catch { return String(value); }
+        })();
+      }
+      return desc.set.call(this, value);
+    };
+    setter.__dshShim = true;
+    Object.defineProperty(Node.prototype, "textContent", { ...desc, set: setter });
+  } catch { /* 垫片失败不影响主流程 */ }
+})();
 
 export class QBClient {
   constructor({ apiKey, baseUrl = DEFAULT_BASE, model = DEFAULT_MODEL, maxSteps = 8 } = {}) {
