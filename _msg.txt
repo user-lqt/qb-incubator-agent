@@ -1,0 +1,16 @@
+fix(web): 修复被我误损坏的 agent.js / index.html，并重做"对话选项"接线
+
+事故说明：上一次提交用 PowerShell（Get-Content/Set-Content）做版本号替换，
+把 agent.js 与 index.html 的中文注释变成乱码并吞掉换行，导致 agent.js 语法错误、
+index.html 内联脚本报错，Pages 的"语法检查"步骤失败（用户收到失败邮件）。
+本次从上一个好提交 f26dbc7 恢复这两个文件，改用安全方式重做改动。
+
+恢复 + 重做内容：
+- agent.js: 选项解析（parseChoices/cleanMarkers）、_choicesOnly 补救选项、
+  越级重写与结局收束路径统一走 cleanMarkers、返回值带 choices
+- index.html: 选项按钮样式与 showChoices/clearChoices、ask(preset) 支持点击发送、
+  重置时清空选项、资源版本号 v11 -> v13
+- 本地按 CI 同款方式自检：web 下 8 个 js/mjs 语法 + 内联脚本 + 4 个测试套件，
+  全部通过后才提交
+
+教训：以后一律用 edit/write 工具改文本文件，不再用 shell 做文本替换。
