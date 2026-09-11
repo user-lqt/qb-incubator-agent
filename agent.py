@@ -105,10 +105,12 @@ if __name__ == "__main__":
                 break
             if not q:
                 continue
+            intent = ""
             if pending and q.isdigit() and 1 <= int(q) <= len(pending):
-                q = pending[int(q) - 1]
-                print(f"（选择 {q}）")
-            result = game.chat(q, history=history, state=state)
+                choice = pending[int(q) - 1]
+                q, intent = choice.get("text", str(choice)), choice.get("dir", "")
+                print(f"（选择 {q}{'｜倾向：' + intent if intent else ''}）")
+            result = game.chat(q, history=history, state=state, intent=intent)
             history, state = result["history"], result["state"]
             print("\n" + game.state_brief(state))
             print(result["answer"] + "\n")
@@ -125,7 +127,8 @@ if __name__ == "__main__":
                 continue
             pending = result.get("choices") or []
             for i, opt in enumerate(pending, 1):
-                print(f"  {i}. {opt}")
+                label = opt.get("text", str(opt)) if isinstance(opt, dict) else str(opt)
+                print(f"  {i}. {label}")
             print()
         sys.exit(0)
 

@@ -249,7 +249,8 @@ function renderBars(state) {
   const t = document.createElement("div");
   t.className = "m";
   const ext = state.extensions ? `已延长 ${state.extensions} 次` : "可延长";
-  t.textContent = `第 ${state.turn}/${state.max_turns} 轮（${ext}）`;
+  const pct = Math.round((state.tension || 0) * 100);
+  t.textContent = `第 ${state.turn}/${state.max_turns} 轮（${ext}）　推进度 ${pct}%`;
   bars.appendChild(t);
   lastState = { ...state };
 }
@@ -278,12 +279,14 @@ function showChoices(list) {
   const box = document.createElement("div");
   box.className = "choices";
   box.id = "choiceBox";
-  for (const text of list) {
+  for (const item of list) {
+    const text = typeof item === "string" ? item : item.text;
+    const dir = typeof item === "string" ? "" : (item.dir || "");
     const btn = document.createElement("button");
     btn.className = "choice";
     btn.type = "button";
     btn.textContent = text;
-    btn.onclick = () => ask(text);
+    btn.onclick = () => ask(text, dir);
     box.appendChild(btn);
   }
   log.appendChild(box);
@@ -336,7 +339,7 @@ function refreshKeyState() {
   $("q").placeholder = has ? "输入问题，Enter 发送" : "先填入 API key 再开始";
 }
 
-async function ask(preset) {
+async function ask(preset, intent) {
   const text = (preset !== undefined ? String(preset) : $("q").value).trim();
   if (!text) return;
   if (!client) {
@@ -350,7 +353,7 @@ async function ask(preset) {
   $("send").disabled = true;
   const waiting = add("sys", "僕在计算……");
   try {
-    const r = await client.turn(text);
+    const r = await client.turn(text, intent || "");
     waiting.remove();
     add("qb", r.answer);
     renderBars(r.state);

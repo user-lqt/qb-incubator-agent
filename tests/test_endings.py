@@ -8,7 +8,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from game import (BASE_TURNS, EXTEND_STEP, HARD_CAP, MAX_TURNS, apply_model_state,  # noqa: E402
+from game import (BASE_TURNS, DELTA_LIMIT, EXTEND_STEP, HARD_CAP, MAX_TURNS, apply_model_state,  # noqa: E402
                   check_ending, new_state, parse_state_marker, update_state)
 
 CASES = {
@@ -119,11 +119,11 @@ def main():
         assert changed == expect, f"识别不准：「{text}」期望 {sorted(expect)} 实际 {sorted(changed)}"
         assert "signed" not in st["flags"], f"「{text}」不该被判为已签约"
 
-    # 敏感度回归：正向表达要有明显提升
+    # 敏感度回归：正向表达要有明显提升（关键词只作兜底，权重已按快节奏下调）
     st = new_state()
     st["turn"] = 1
     update_state(st, "土木怎么样？我想了解一下就业方向")
-    assert st["contract"] >= 15, f"好感权重过小：contract={st['contract']}"
+    assert st["contract"] >= 10, f"好感权重过小：contract={st['contract']}"
 
     # ---- 语义评分：解析、容错、钳制、覆盖关键词 ----
     clean, data = parse_state_marker('僕这样说。[[STATE:{"contract":8,"flags":["asked_how"]}]]')
@@ -135,13 +135,13 @@ def main():
     st = new_state()
     st["turn"] = 1
     update_state(st, "土木的课程难吗")
-    assert st["contract"] >= 15, f"关键词兜底未生效：{st['contract']}"
+    assert st["contract"] >= 10, f"关键词兜底未生效：{st['contract']}"
     pre = {"contract": 0, "suspicion": 0, "despair": 0, "resistance": 0, "reform": 0, "flags": []}
     apply_model_state(st, pre, {"contract": 3, "flags": []})
     assert st["contract"] == 3, f"模型评分未覆盖关键词：{st['contract']}（应为 3）"
 
     apply_model_state(st, pre, {"contract": 999, "suspicion": -999, "flags": ["hack", "signed"]})
-    assert st["contract"] == 25 and st["suspicion"] == 0 and "hack" not in st["flags"], \
+    assert st["contract"] == DELTA_LIMIT and st["suspicion"] == 0 and "hack" not in st["flags"], \
         f"钳制/白名单失效：{st['contract']} {st['suspicion']} {st['flags']}"
 
     st = new_state()

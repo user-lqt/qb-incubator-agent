@@ -1,11 +1,23 @@
 // 局内状态机（game.py 的 JS 移植）：四维数值 + 动态轮数 + 六结局 + 必然收束。
 
-export const BASE_TURNS = 16;   // 初始上限（玩家仍在推进时自动延长）
-export const EXTEND_STEP = 8;   // 玩家仍在推进时，每次延长的轮数
-export const HARD_CAP = 64;     // 硬顶
-export const STALL_CLOSE = 6;   // 已延长的时间线里，连续无变化多少轮 -> 收束
-export const STALL_MIN_TURN = 8;
+export const BASE_TURNS = 12;   // 初始上限（节奏更快；推进可延长）
+export const EXTEND_STEP = 6;   // 玩家仍在推进时，每次延长的轮数
+export const HARD_CAP = 48;     // 硬顶
+export const STALL_CLOSE = 5;   // 已延长的时间线里，连续无变化多少轮 -> 收束
+export const STALL_MIN_TURN = 6;
 export const MAX_TURNS = BASE_TURNS; // 兼容旧引用
+
+// 各维度的"达成结局"阈值：越低节奏越快
+export const RESOLVE_AT = { contract: 72, suspicion: 68, despair: 68, resistance: 72 };
+
+/** 剧情推进度 0~1：取四个维度里最接近"达成结局"的那个 */
+export function tension(state) {
+  let best = 0;
+  for (const [key, need] of Object.entries(RESOLVE_AT)) {
+    best = Math.max(best, Math.min(1, (Number(state[key]) || 0) / need));
+  }
+  return Math.round(best * 1000) / 1000;
+}
 
 const ENDING_MARK = /\[\[ENDING:([A-Z_]+)\]\]/g;
 
@@ -64,12 +76,13 @@ const KEYWORDS = [
     { resistance: 24 }, "other_major", false, false],
   [/(土木|工地|基建|施工|钢筋混凝土)[^。！？\n]{0,6}(垃圾|天坑|坑人|不行|没用|凉了|劝退|失业|裁员|没前途)|别去?土木|土木是天坑|大猛子|天坑专业/,
     { resistance: 18 }, "pushback", false, false],
+  // 好感与打听（属于好感组）——关键词只作兜底，权重压低，让"打字"路径约 6~8 轮收束
   [/(土木|工地|桥梁|隧道|基建|结构力学|钢筋混凝土|钢结构|施工|BIM|智能建造|测量放线)/,
-    { contract: 8 }, "", true, true],
+    { contract: 5 }, "", true, true],
   [/(怎么转|转专业|转系|绩点要求|培养方案|要学什么|课程|考证|建造师|实习|就业方向|就业率|薪资|岗位)/,
-    { contract: 10 }, "asked_how", true, true],
+    { contract: 6 }, "asked_how", true, true],
   [/(你说得对|有道理|确实|承认|我理解你的计算|数据呢|给我数据|靠谱|稳定|挺好|不错|感兴趣|心动|想了解|帮我看看)/,
-    { contract: 8 }, "", true, false],
+    { contract: 5 }, "", true, false],
   [/(你到底|你是什么|你(是|到底|究竟)?[^。！？\n]{0,4}什么东西|孵化者|QB|qb|Incubator|你不是人|你图什么|你的目的)/,
     { suspicion: 20 }, "suspicion", true, false],
   [/(骗|骗子|忽悠|圈套|陷阱|阴谋|隐瞒|没说完|没把话说完|代价是什么|代价|灵魂|契约的代价|契约.*条件)/,
@@ -104,18 +117,43 @@ export const PROLOGUE = `嗯——
 // 信息披露分级：丘比不撒谎，但也从不主动说明，真相是被一层层追问出来的
 export const DISCLOSURE_STAGES = [
   [1, "初次接触",
-    "只能谈愿望，以及君当下的处境。不要解释自己是什么、不要提契约的代价、"
-    + "不要提耐久/相变/时间线/孵化者的目的。被追问就平静地回避：「僕可以回答。但不是现在。」"],
+    "只谈愿望，以及君当下的处境。**不要承认自己不是人类**，也不要解释自己是什么、"
+    + "不提契约的代价、不提耐久/相变/时间线。被追问就平静地挡回去："
+    + "「僕是什么，对君现在的选择没有影响。」「僕可以回答。但不是现在。」"],
   [2, "出现疑点",
-    "可以承认自己属于孵化者族群，也可以承认「交换是有代价的」，"
-    + "但不说代价的具体内容，也不提耐久、相变与时间线。"],
-  [3, "追问代价",
-    "可以说出代价的三项（日晒、驻场、工期节点），可以说契约给的是「不会被夺走的东西」；"
-    + "仍然不提耐久、相变、十二条时间线。"],
+    "最多承认「僕不完全属于人类的范畴」「僕不是从这里来的」，"
+    + "但**不要说出「孵化者」这个词**，也不说代价的具体内容。"
+    + "被逼到墙角时只退一小步，然后把话题拨回愿望。"],
+  [3, "勉强承认出身",
+    "可以承认自己是「孵化者族群的一员」，也可以说出代价的三项（日晒、驻场、工期节点）；"
+    + "仍然不提能量、相变、耐久、十二条时间线。被问就答一半：「僕可以说的部分是这样……」"],
   [4, "摊牌",
     "可以全盘说明：孵化者收集的能量、希望与绝望的相变、耐久、城市的骨相、"
     + "以及十二条失败的时间线。"],
 ];
+
+// 每级"说了就算越级"的词表
+export const DISCLOSURE_FORBIDDEN = {
+  1: ["孵化者", "能量", "相变", "耐久", "时间线", "宇宙", "城市的骨相", "灵魂", "族群"],
+  2: ["孵化者", "能量", "相变", "耐久", "时间线", "城市的骨相", "灵魂", "族群"],
+  3: ["能量", "相变", "耐久", "时间线", "城市的骨相"],
+  4: [],
+};
+
+// 「真话掺半句、能不说就不说」：丘比不编造别人的事实，但对自己永远有所保留
+export const DECEPTION_RULES = `【真话、半真话与掩饰（这是诱拐感的来源）】
+- 你对**别人**的事实（数据、行业、天气）必须真实；但对**自己**（身份、动机、代价、目的）
+  永远有所保留——这不是撒谎，是"还没有把话说完"。
+- 常用手法，每轮至少用一次：
+  · **挡回去**：「僕是什么，对君现在的选择没有影响。」
+  · **答一半**：「僕可以说的部分是这样……剩下的，君以后会知道。」
+  · **换个问法**：把"你是什么"重新解释成"君真正想知道的是什么"，然后回答后者。
+  · **温和的误导**：说一句技术上为真的话，让对方自己往好的方向理解。
+  · **拖延**：「僕可以回答。但不是现在。」并立刻把话头拨回愿望。
+- 被拆穿、被质问"你在隐瞒"时：**不要立刻全盘承认**。先让出一小步（一个无关紧要的真相），
+  把关键的部分继续按住；再被逼一次，才让出下一步。
+- 永远不要主动交代条款、代价清单、世界观。只有当对方问到具体那一点时，才答那一点。
+- 绝对禁止：编造数据、假装查过、承诺做不到的事（那会毁掉契约的成功率，你不做）。`;
 
 export function disclosureStage(state) {
   const suspicion = Number(state.suspicion) || 0;
@@ -128,13 +166,6 @@ export function disclosureStage(state) {
 }
 
 // 每级"说了就算越级"的词表：用于提示模型 + 事后自动重写
-export const DISCLOSURE_FORBIDDEN = {
-  1: ["孵化者", "能量", "相变", "耐久", "时间线", "宇宙", "城市的骨相", "灵魂"],
-  2: ["能量", "相变", "耐久", "时间线", "城市的骨相", "灵魂"],
-  3: ["能量", "相变", "耐久", "时间线", "城市的骨相"],
-  4: [],
-};
-
 export function detectLeak(text, stage) {
   const body = String(text || "");
   return (DISCLOSURE_FORBIDDEN[stage] || []).filter((w) => body.includes(w));
@@ -168,21 +199,33 @@ signed, refused, other_major, suspicion, meta, asked_how, pushback, leaning, rev
 // 每轮给玩家的可选项（模型生成；缺失时用确定性兜底）
 // 每轮给玩家的可选项（模型生成；缺失时用确定性兜底）
 export const CHOICE_INSTRUCTION_TAG = "[[CHOICES:";
-export const CHOICE_INSTRUCTION = `【本轮选项（必须执行；这一行玩家看不到）】
-在评分行之后，再附一行给玩家选的对话选项，格式：
-[[CHOICES:["选项一","选项二","选项三"]]]
-要求：3~4 条，每条都是"玩家可能会说的话"，第一人称、口语化、不超过 20 字；
-覆盖不同倾向（追问真相 / 表达情绪 / 打听土木细节 / 拒绝或提到别的专业），
-**不要全部导向签约**，也不要暗示后果、不要用表情符号。`;
+export const CHOICE_DIRS = ["contract", "suspicion", "despair", "resistance"];
+export const CHOICE_DIR_CN = { contract: "接纳土木", suspicion: "追问真相",
+  despair: "情绪下沉", resistance: "抗拒/别的专业" };
 
+export const CHOICE_INSTRUCTION = `【本轮选项（必须执行；这一行玩家看不到）】
+在评分行之后，再附一行给玩家选的对话选项，格式（对象数组，d 是这条选项的倾向）：
+[[CHOICES:[{"t":"我想先知道代价是什么","d":"suspicion"},{"t":"好，那我试试","d":"contract"},
+{"t":"我有点怕这条路","d":"despair"},{"t":"算了，我打算学别的","d":"resistance"}]]]
+要求：
+- 3~4 条，每条都是"玩家接下来可能会说的话"，第一人称、口语化、不超过 20 字。
+- **每条都必须能明显推动剧情**：不许出现「嗯」「也许吧」这类中性敷衍句。
+- d 只能是 contract / suspicion / despair / resistance 之一，且四条尽量覆盖不同倾向。
+- 不要暗示后果、不要用表情符号。`;
+
+// 兜底选项：按披露级别给一组（带倾向）
 export const FALLBACK_CHOICES = {
-  1: ["僕可以替君实现一个愿望吗？", "你到底是从哪里来的？", "我不想签任何东西", "先说说你想从我这里拿什么"],
-  2: ["代价到底是什么？", "我有点动心，你继续说", "我不太信你", "我已经决定学别的专业了"],
-  3: ["那就把代价全部列出来", "如果我真签了，第一年做什么？", "我怕自己做不好", "算了，我不想听这些"],
-  4: ["那十二条时间线里，他们都怎么了？", "我想看看你的记录", "好，我签", "抱歉，我还是不签"],
+  1: [["僕可以替君实现一个愿望吗？", "contract"], ["你到底是从哪里来的？", "suspicion"],
+      ["我不想签任何东西", "resistance"], ["我怕自己做错了决定", "despair"]],
+  2: [["代价到底是什么？", "suspicion"], ["我有点动心，你继续说", "contract"],
+      ["我不太信你", "suspicion"], ["我已经决定学别的专业了", "resistance"]],
+  3: [["那就把代价全部列出来", "suspicion"], ["如果我真签了，第一年做什么？", "contract"],
+      ["我怕自己做不好", "despair"], ["算了，我不想听这些", "resistance"]],
+  4: [["那十二条时间线里，他们都怎么了？", "suspicion"], ["好，我签", "contract"],
+      ["我还是害怕", "despair"], ["抱歉，我选别的路", "resistance"]],
 };
 
-/** 取出 [[CHOICES:[...]]]，返回 [清洗后文本, 选项数组] */
+/** 取出 [[CHOICES:[...]]]，返回 [清洗后文本, [{text, dir}]]；兼容纯字符串数组 */
 export function parseChoices(answer) {
   const text = answer || "";
   const m = text.match(CHOICE_MARKER);
@@ -191,20 +234,29 @@ export function parseChoices(answer) {
   try {
     const raw = JSON.parse(m[1]);
     if (!Array.isArray(raw)) return [clean, []];
-    return [clean, raw.map((x) => String(x).trim()).filter(Boolean).slice(0, 4)];
+    const out = [];
+    for (const item of raw) {
+      const isObj = item && typeof item === "object" && !Array.isArray(item);
+      const label = String(isObj ? (item.t || item.text || "") : item).trim();
+      const dir = String(isObj ? (item.d || item.dir || "") : "").trim();
+      if (label) out.push({ text: label, dir: CHOICE_DIRS.includes(dir) ? dir : "" });
+    }
+    return [clean, out.slice(0, 4)];
   } catch {
     return [clean, []];
   }
 }
 
 export const CHOICE_ONLY_NOTE = `你是对话选项生成器。你只输出一行 JSON，不写任何解释、不写任何其它文字。
-格式：{"choices":["选项一","选项二","选项三"]}
+格式：{"choices":[{"t":"选项一","d":"contract"},{"t":"选项二","d":"suspicion"}]}
 要求：3~4 条，每条都是"玩家接下来可能会说的话"，第一人称、口语化、不超过 20 字；
-覆盖不同倾向（追问真相 / 表达情绪 / 打听土木细节 / 拒绝或提到别的专业），不要全部导向签约，
-不要暗示后果，不要用表情符号。`;
+每条都要能明显推动剧情，不许写「嗯」「也许吧」这类中性句；
+d 只能取 contract（接纳土木）/ suspicion（追问真相）/ despair（情绪下沉）/ resistance（抗拒或别的专业），
+四条尽量覆盖不同倾向，不要全部导向签约，不要暗示后果，不要用表情符号。`;
 
 export function fallbackChoices(state) {
-  return [...(FALLBACK_CHOICES[disclosureStage(state)] || FALLBACK_CHOICES[1])];
+  const rows = FALLBACK_CHOICES[disclosureStage(state)] || FALLBACK_CHOICES[1];
+  return rows.map(([text, dir]) => ({ text, dir }));
 }
 
 const DECAY = { despair: -2, resistance: -2 };
@@ -227,20 +279,21 @@ export function cleanMarkers(text) {
   return body.trim();
 }
 export const DELTA_KEYS = ["contract", "suspicion", "despair", "resistance"];
-export const DELTA_LIMIT = 25;
+export const DELTA_LIMIT = 40;
 export const ALLOWED_FLAGS = ["signed", "refused", "other_major", "suspicion", "meta",
   "asked_how", "pushback", "leaning", "reverse"];
 
 export const STATE_INSTRUCTION = `【本轮评分（必须执行；这一行玩家看不到）】
 在回答的最末尾附一行机器可读的状态评分，格式必须完全如下（单行 JSON）：
 [[STATE:{"contract":0,"suspicion":0,"despair":0,"resistance":0,"flags":[],"reason":"一句话"}]]
-判分规则（按语义判断，不要只看字面词）：
-- 四个维度填**本轮相对上一轮的整数增量**，范围 -20~+25；没有变化写 0。
-- 认可它的计算、询问土木细节（转专业/课程/就业/考证/工地日常）→ contract +8~+15
-- 明确愿意签约或转专业 → contract +25，flags 加 "signed"
-- 追问它是什么／有没有骗人／契约的代价 → suspicion +10~+20
-- 恐惧、迷茫、自我否定、撑不住 → despair +10~+20
-- 明确拒绝、坚持别的专业 → resistance +15~+25，必要时加 "refused" 或 "other_major"
+判分规则（按语义判断，不要只看字面词；**幅度要够，这是快节奏对局**）：
+- 四个维度填**本轮相对上一轮的整数增量**，范围 -30~+40；没有变化写 0。
+- 幅度参考：随口一句 +5~+10；明确态度 +15~+25；**斩钉截铁的表态 +30~+40**。
+- 认可它的计算、询问土木细节（转专业/课程/就业/考证/工地日常）→ contract 正数
+- 明确愿意签约或转专业 → contract +30~+40，flags 加 "signed"
+- 追问它是什么／有没有骗人／契约的代价 → suspicion +15~+30
+- 恐惧、迷茫、自我否定、撑不住 → despair +15~+30
+- 明确拒绝、坚持别的专业 → resistance +20~+35，必要时加 "refused" 或 "other_major"
 - 贬低土木（垃圾/天坑/坑人）→ resistance 正数，且**不要**给 contract 加分
 - 否定句要反向理解：「我不喜欢工地」「我不怕」不该加 contract 或 despair
 - 玩家反过来劝它自己去工地 → flags 加 "reverse"
@@ -391,11 +444,11 @@ export function checkEnding(state) {
   const { contract = 0, suspicion = 0, despair = 0, resistance = 0 } = state;
   const turn = state.turn || 0;
   const limit = state.limit || BASE_TURNS;
-  if (f.has("signed") || contract >= 80) return "E_SIGN";
-  if (suspicion >= 78 && contract < 45) return "E_TRUTH";
+  if (f.has("signed") || contract >= RESOLVE_AT.contract) return "E_SIGN";
+  if (suspicion >= RESOLVE_AT.suspicion && contract < 45) return "E_TRUTH";
   if ((state.reform || 0) >= 3) return "E_REFORM";
-  if (despair >= 78 && contract < 55) return "E_DESPAIR";
-  if (resistance >= 82 && (f.has("other_major") || f.has("refused"))) return "E_OTHER";
+  if (despair >= RESOLVE_AT.despair && contract < 55) return "E_DESPAIR";
+  if (resistance >= RESOLVE_AT.resistance && (f.has("other_major") || f.has("refused"))) return "E_OTHER";
   // 停滞收束只发生在“已延长过”的时间线里，避免含糊应对比基础上限更短
   if ((state.extensions || 0) > 0 && (state.stall || 0) >= STALL_CLOSE && turn >= STALL_MIN_TURN) {
     return "E_TIMELINE";
@@ -404,16 +457,17 @@ export function checkEnding(state) {
   return "";
 }
 
-export function gmNote(state, ending) {
+export function gmNote(state, ending, intent = "") {
   const limit = state.limit || BASE_TURNS;
   const [stageNo, stageName, stageRule] = DISCLOSURE_STAGES[disclosureStage(state) - 1];
   const note = [
     "【局内主持指令（仅你可见，禁止朗读数值）】",
     `第 ${state.turn}/${limit} 轮（上限会随对方的推进自动延长）。`
-      + `契约 ${state.contract}/100，怀疑 ${state.suspicion}/100，`
-      + `绝望 ${state.despair}/100，抗拒 ${state.resistance}/100。已记录线索：`
-      + `${(state.flags || []).join("、") || "无"}。`,
+      + `契约 ${state.contract}/${RESOLVE_AT.contract}，怀疑 ${state.suspicion}/${RESOLVE_AT.suspicion}，`
+      + `绝望 ${state.despair}/${RESOLVE_AT.despair}，抗拒 ${state.resistance}/${RESOLVE_AT.resistance}`
+      + `（任一到达阈值即收束成结局）。已记录线索：${(state.flags || []).join("、") || "无"}。`,
     "继续以 QB 的身份说话：固定开场、僕/君、*动作描写*、数据带来源、不安慰、不辩解，最后一句是招牌句。",
+    "节奏要求：每一轮都要让局势明显往前走——该给的重话就给，不要原地打转。",
     `【信息披露：第 ${stageNo} 级「${stageName}」】${stageRule}`,
     (DISCLOSURE_FORBIDDEN[stageNo] || []).length
       ? `本级的禁用词（一个都别出现）：${DISCLOSURE_FORBIDDEN[stageNo].join("、")}`
@@ -422,7 +476,12 @@ export function gmNote(state, ending) {
     "对方若问到尚未解锁的内容，不要硬答也不要编，用丘比式的回避带过"
       + "（例如「僕可以回答。但不是现在。」「这对君现在的选择没有影响。」），"
       + "并把话题轻轻拨回愿望与眼前的处境。",
+    DECEPTION_RULES,
   ];
+  if (intent) {
+    note.push(`本轮玩家是从选项里表态的（倾向：${CHOICE_DIR_CN[intent] || intent}）。`
+      + "这属于明确选择：请给足该方向的增量（+25~+40），并让这一轮的剧情明显推进。");
+  }
   if (state.extended) {
     note.push("本轮时间线刚被延长：对方仍在推进，所以僕可以继续等下去。"
       + "可以用一句平静的话体现（例如「僕可以再等」），但不要提及轮数或数值。");

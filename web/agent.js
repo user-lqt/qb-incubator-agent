@@ -111,15 +111,15 @@ export class QBClient {
     return "已达最大步数，未得到最终答案。";
   }
 
-  /** 带玩法的单轮推进（与 game.py 等价）。 */
-  async turn(question) {
+  /** 带玩法的单轮推进（与 game.py 等价）。intent 为选项倾向，可选。 */
+  async turn(question, intent = "") {
     const pre = snapshotOf(this.state);        // 本轮之前的快照：模型增量相对于它
     this.state.turn += 1;
     updateState(this.state, question);         // 关键词预判（主持指令读当前局势，也是兜底）
     let ending = checkEnding(this.state);
     if (ending) this.state.ending = ending;
 
-    const raw = await this._run(question, gmNote(this.state, ending));
+    const raw = await this._run(question, gmNote(this.state, ending, intent));
     // 语义评分：模型在回答末尾附的 [[STATE:{...}]] 是本轮的权威判定
     const [cleanRaw, parsedData] = parseStateMarker(raw);
     let modelData = parsedData;
@@ -191,6 +191,7 @@ export class QBClient {
     return {
       answer, state: { ...this.state, max_turns: this.state.limit || BASE_TURNS }, ending,
       choices: finalChoices.length ? finalChoices : fallbackChoices(this.state),
+      tension: gameMod.tension(this.state),
       ending_title: ending ? ENDINGS[ending].title : "",
       ending_tagline: ending ? ENDINGS[ending].tagline : "",
     };

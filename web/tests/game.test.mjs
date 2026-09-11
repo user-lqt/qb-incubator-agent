@@ -1,6 +1,6 @@
 // 六结局触发测试（game.py / tests/test_endings.py 的 JS 版，不调用模型）
-import { BASE_TURNS, EXTEND_STEP, HARD_CAP, PROLOGUE, checkEnding, describeDelta, newState, updateState,
-         parseStateMarker, applyModelState, snapshotOf, applyTurnState,
+import { BASE_TURNS, DELTA_LIMIT, EXTEND_STEP, HARD_CAP, PROLOGUE, RESOLVE_AT, checkEnding, describeDelta, newState, updateState,
+         parseStateMarker, applyModelState, snapshotOf, applyTurnState, tension, gmNote,
          disclosureStage, detectLeak, parseChoices, fallbackChoices } from "../game.js";
 
 const CASES = {
@@ -110,7 +110,7 @@ for (const [text, expect] of ACCURACY) {
 // 敏感度回归
 const sens = { ...newState(), turn: 1 };
 updateState(sens, "土木怎么样？我想了解一下就业方向");
-if (sens.contract < 15) { console.log(`FAIL 好感权重过小：contract=${sens.contract}`); failed += 1; }
+if (sens.contract < 10) { console.log(`FAIL 好感权重过小：contract=${sens.contract}`); failed += 1; }
 
 // describeDelta：界面上的"本轮变化"提示
 const before = { ...newState(), turn: 1 };
@@ -133,12 +133,12 @@ if (badParsed !== null) { console.log("FAIL 坏 JSON 应当返回 null"); failed
 const pre = { contract: 0, suspicion: 0, despair: 0, resistance: 0, reform: 0, flags: [] };
 const st = { ...newState(), turn: 1 };
 updateState(st, "土木的课程难吗");                       // 关键词会给 +18
-if (st.contract < 15) { console.log(`FAIL 关键词兜底未生效：${st.contract}`); failed += 1; }
+if (st.contract < 10) { console.log(`FAIL 关键词兜底未生效：${st.contract}`); failed += 1; }
 applyModelState(st, pre, { contract: 3, flags: [] });    // 模型说只 +3
 if (st.contract !== 3) { console.log(`FAIL 模型评分未覆盖关键词：${st.contract}（应为 3）`); failed += 1; }
 
 applyModelState(st, pre, { contract: 999, suspicion: -999, flags: ["hack", "signed"] });
-if (st.contract !== 25 || st.suspicion !== 0 || st.flags.includes("hack")) {
+if (st.contract !== DELTA_LIMIT || st.suspicion !== 0 || st.flags.includes("hack")) {
   console.log(`FAIL 钳制/白名单失效：${st.contract} ${st.suspicion} ${JSON.stringify(st.flags)}`);
   failed += 1;
 }
@@ -173,23 +173,44 @@ for (const [patch, expect] of STAGE_CASES) {
   if (got !== expect) { console.log(`FAIL 披露级别 ${JSON.stringify(patch)} 期望 ${expect} 实际 ${got}`); failed += 1; }
 }
 if (detectLeak("僕是孵化者。", 1).length !== 1) { console.log("FAIL 第 1 级应禁用'孵化者'"); failed += 1; }
-if (detectLeak("僕是孵化者。", 2).length !== 0) { console.log("FAIL 第 2 级应允许'孵化者'"); failed += 1; }
+if (detectLeak("僕是孵化者。", 2).length !== 1) { console.log("FAIL 第 2 级仍应禁用'孵化者'（挤牙膏）"); failed += 1; }
+if (detectLeak("僕是孵化者族群的一员。", 3).length !== 0) { console.log("FAIL 第 3 级应允许承认出身"); failed += 1; }
 if (detectLeak("希望到绝望的相变。", 3).length === 0) { console.log("FAIL 第 3 级应禁用'相变'"); failed += 1; }
 if (detectLeak("代价是日晒、驻场、工期节点。", 3).length !== 0) { console.log("FAIL 第 3 级应允许代价三项"); failed += 1; }
 if (detectLeak("孵化者收集能量，形成耐久。", 4).length !== 0) { console.log("FAIL 第 4 级应无限制"); failed += 1; }
+if (!gmNote(newState(), "").includes("真话、半真话与掩饰")) {
+  console.log("FAIL 掩饰规则未注入主持指令"); failed += 1;
+}
 
-// ---- 对话选项：标记解析 + 兜底 ----
-const [cleanCh, chs] = parseChoices('僕这样说。[[STATE:{"contract":1}]]\n[[CHOICES:["继续问","我考虑一下","算了"]]]');
-if (cleanCh.includes("CHOICES") || chs.length !== 3 || chs[0] !== "继续问") {
+// ---- 对话选项：对象格式解析 + 倾向 + 兜底 ----
+const [cleanCh, chs] = parseChoices(
+  '僕这样说。[[STATE:{"contract":1}]]\n'
+  + '[[CHOICES:[{"t":"继续问","d":"suspicion"},{"t":"我考虑一下","d":"contract"}]]]');
+if (cleanCh.includes("CHOICES") || chs.length !== 2
+    || chs[0].text !== "继续问" || chs[0].dir !== "suspicion" || chs[1].dir !== "contract") {
   console.log(`FAIL 选项解析失败：clean=${JSON.stringify(cleanCh)} chs=${JSON.stringify(chs)}`); failed += 1;
 }
+const [, legacyCh] = parseChoices('[[CHOICES:["纯字符串也认","第二条"]]]');
+if (legacyCh.length !== 2 || legacyCh[0].text !== "纯字符串也认" || legacyCh[0].dir !== "") {
+  console.log("FAIL 纯字符串选项兼容失败"); failed += 1;
+}
+const [, badDirCh] = parseChoices('[[CHOICES:[{"t":"越界","d":"hack"}]]]');
+if (badDirCh[0].dir !== "") { console.log("FAIL 非法倾向应被清空"); failed += 1; }
 const [, badCh] = parseChoices("嗯[[CHOICES:[不是数组}]]");
 if (badCh.length !== 0) { console.log("FAIL 坏选项应返回空数组"); failed += 1; }
-const [, notArray] = parseChoices('[[CHOICES:"字符串不算"]]');
-if (notArray.length !== 0) { console.log("FAIL 非数组选项应被丢弃"); failed += 1; }
 for (let st = 1; st <= 4; st += 1) {
   const fb = fallbackChoices({ ...newState(), suspicion: st >= 4 ? 70 : st === 3 ? 45 : st === 2 ? 25 : 0, turn: 1 });
-  if (fb.length < 3 || fb.length > 4) { console.log(`FAIL 第 ${st} 级兜底选项数量异常：${fb.length}`); failed += 1; }
+  if (fb.length < 3 || fb.length > 4 || fb.some((c) => !c.text || !c.dir)) {
+    console.log(`FAIL 第 ${st} 级兜底选项异常：${JSON.stringify(fb)}`); failed += 1;
+  }
+}
+
+// ---- 节奏：紧张度 ----
+if (tension(newState()) !== 0) { console.log("FAIL 空局势紧张度应为 0"); failed += 1; }
+const mid = { ...newState(), contract: RESOLVE_AT.contract / 2 };
+if (!(tension(mid) > 0.4 && tension(mid) < 0.6)) { console.log(`FAIL 半程紧张度异常：${tension(mid)}`); failed += 1; }
+if (tension({ ...newState(), suspicion: RESOLVE_AT.suspicion }) !== 1) {
+  console.log("FAIL 到阈值紧张度应为 1"); failed += 1;
 }
 
 // 畸形标记容错（模型经常少写一个右括号）
