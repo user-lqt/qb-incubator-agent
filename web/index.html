@@ -157,7 +157,7 @@
 
 <script type="module">
 // v 是资源版本号：每次改动 web/ 下的 js，把它 +1，可避免"新页面 + 旧缓存模块"导致白屏
-const V = "?v=13";
+const V = "?v=14";
 const { QBClient } = await import("./agent.js" + V);
 const { BASE_TURNS, HARD_CAP, PROLOGUE, describeDelta } = await import("./game.js" + V);
 
@@ -273,22 +273,26 @@ function showEnding(title, tagline) {
 
 // 实时星标数：GitHub API（匿名 60 次/小时），本地缓存 10 分钟避免打爆限额
 // 每轮的对话选项：渲染成可点按钮，点击即发送
-function showChoices(list) {
+function showChoices(list, dirs) {
   clearChoices();
   if (!list || !list.length) return;
   const box = document.createElement("div");
   box.className = "choices";
   box.id = "choiceBox";
-  for (const item of list) {
-    const text = typeof item === "string" ? item : item.text;
-    const dir = typeof item === "string" ? "" : (item.dir || "");
+  list.forEach((item, i) => {
+    // 兼容三种形态：字符串、{text,dir}、{t,d}
+    const isObj = item && typeof item === "object";
+    const text = String(isObj ? (item.text || item.t || "") : item);
+    const dir = isObj ? (item.dir || item.d || "") : ((dirs && dirs[i]) || "");
+    if (!text) return;
     const btn = document.createElement("button");
     btn.className = "choice";
     btn.type = "button";
     btn.textContent = text;
     btn.onclick = () => ask(text, dir);
     box.appendChild(btn);
-  }
+  });
+  if (!box.childElementCount) return;
   log.appendChild(box);
   const scroller = document.querySelector("main");
   scroller.scrollTop = scroller.scrollHeight;
@@ -362,7 +366,7 @@ async function ask(preset, intent) {
     add("sys", describeDelta(prevState, r.state) + (src ? `　［判定：${src}］` : ""));
     prevState = { ...r.state };
     showEnding(r.ending_title, r.ending_tagline);
-    if (!r.ending) showChoices(r.choices);
+    if (!r.ending) showChoices(r.choices, r.choiceDirs || []);
   } catch (e) {
     waiting.remove();
     add("sys", "出错了：" + e.message + "（检查 key、余额与网络；跨域失败请换用本地 http 服务器打开本页）");

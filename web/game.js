@@ -259,6 +259,18 @@ export function fallbackChoices(state) {
   return rows.map(([text, dir]) => ({ text, dir }));
 }
 
+/**
+ * 把富选项数组拆成"纯文本 + 倾向"两份，保证向后兼容：
+ * 旧版页面（只认字符串）也能正常显示，不会出现 [object Object]。
+ */
+export function toChoicePayload(rich) {
+  const list = rich || [];
+  return {
+    texts: list.map((c) => String(typeof c === "string" ? c : (c.text || c.t || ""))),
+    dirs: list.map((c) => (typeof c === "string" ? "" : (c.dir || c.d || ""))),
+  };
+}
+
 const DECAY = { despair: -2, resistance: -2 };
 
 // ---------------------------------------------------------------- 语义评分（模型打分）

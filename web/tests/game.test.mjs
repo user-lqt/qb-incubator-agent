@@ -1,6 +1,6 @@
 // 六结局触发测试（game.py / tests/test_endings.py 的 JS 版，不调用模型）
 import { BASE_TURNS, DELTA_LIMIT, EXTEND_STEP, HARD_CAP, PROLOGUE, RESOLVE_AT, checkEnding, describeDelta, newState, updateState,
-         parseStateMarker, applyModelState, snapshotOf, applyTurnState, tension, gmNote,
+         parseStateMarker, applyModelState, snapshotOf, applyTurnState, tension, gmNote, toChoicePayload,
          disclosureStage, detectLeak, parseChoices, fallbackChoices } from "../game.js";
 
 const CASES = {
@@ -228,6 +228,23 @@ for (const text of MALFORMED) {
   if (text.includes("CHOICES") && !text.includes("少一个") && chs.length < 2) {
     console.log(`FAIL 畸形选项未解析：${text} -> ${chs.length} 条`); failed += 1;
   }
+}
+
+// 向后兼容：choices 必须是纯字符串数组 + 独立的倾向数组（防止旧页面渲染成 [object Object]）
+const richChoices = fallbackChoices(newState());
+const payload = toChoicePayload(richChoices);
+if (!payload.texts.every((t) => typeof t === "string" && t.length > 0)) {
+  console.log(`FAIL choices 必须是纯文本数组：${JSON.stringify(payload.texts)}`); failed += 1;
+}
+if (payload.texts.some((t) => t.includes("[object"))) {
+  console.log("FAIL choices 出现了 [object Object]"); failed += 1;
+}
+if (payload.dirs.length !== payload.texts.length) {
+  console.log("FAIL choiceDirs 与 choices 数量不一致"); failed += 1;
+}
+const mixed = toChoicePayload(["纯字符串", { text: "对象形态", dir: "contract" }, { t: "短键形态", d: "despair" }]);
+if (mixed.texts.join("|") !== "纯字符串|对象形态|短键形态" || mixed.dirs[1] !== "contract" || mixed.dirs[2] !== "despair") {
+  console.log(`FAIL 兼容层解析异常：${JSON.stringify(mixed)}`); failed += 1;
 }
 
 console.log(failed ? `\n${failed} 条不通过` : `\n全部 ${Object.keys(CASES).length} 条结局判定 + 动态轮数断言通过（JS 版）`);

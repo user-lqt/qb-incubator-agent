@@ -2,7 +2,7 @@
 // 只是把 HTTP 客户端从 openai SDK 换成 fetch，并且自带结局玩法（game.js）。
 
 // 注意：资源版本号要与 index.html 里的 V 保持一致，避免"新代码 + 旧缓存模块"混搭
-const V = "?v=13";
+const V = "?v=14";
 
 const { SYSTEM_PROMPT } = await import("./persona.js" + V);
 const { FUNCTIONS, TOOLS, TOOL_AVAILABILITY_NOTE } = await import("./tools.js" + V);
@@ -188,9 +188,15 @@ export class QBClient {
       }
     }
 
+    // 向后兼容：choices 一律回传**纯字符串**（旧版页面也能正确显示），
+    // 倾向单独放在 choiceDirs 里，新页面按索引取用。
+    const rich = finalChoices.length ? finalChoices : fallbackChoices(this.state);
+    const { texts, dirs } = gameMod.toChoicePayload(rich);
     return {
       answer, state: { ...this.state, max_turns: this.state.limit || BASE_TURNS }, ending,
-      choices: finalChoices.length ? finalChoices : fallbackChoices(this.state),
+      choices: texts,
+      choiceDirs: dirs,
+      choicesRich: rich,
       tension: gameMod.tension(this.state),
       ending_title: ending ? ENDINGS[ending].title : "",
       ending_tagline: ending ? ENDINGS[ending].tagline : "",

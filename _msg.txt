@@ -1,0 +1,14 @@
+fix(web): 修选项渲染成 [object Object] —— choices 改为向后兼容的纯文本数组
+
+现象：用户看到四个按钮显示 [object Object]。
+诊断：线上 index.html 与本地一致且已支持对象选项，问题出在**浏览器缓存了旧版 index.html**：
+旧页面的渲染逻辑把选项当文本输出，而新版 agent.js 返回的是对象 → 文本化为 [object Object]。
+
+修复（让新旧页面混搭时也不再出错）：
+- agent.js 新增兼容层：choices 一律回传**纯字符串数组**，倾向单独放在 choiceDirs
+  （旧页面按字符串渲染正常；新页面按索引取倾向）
+- game.js 新增 toChoicePayload()，统一做这层拆分，便于测试
+- index.html showChoices 兼容三种形态：字符串 / {text,dir} / {t,d}
+- 回归测试：choices 必须全部是字符串且不含 [object Object]；choiceDirs 数量对齐；
+  三种形态混合解析正确
+- 资源版本号 v13 -> v14，触发模块缓存刷新
