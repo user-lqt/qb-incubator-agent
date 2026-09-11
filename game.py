@@ -514,7 +514,10 @@ CHOICE_ONLY_NOTE = """你是对话选项生成器。你只输出一行 JSON，�
 
 
 def choices_only(question: str, answer: str = ""):
-    """补救：主回答没给选项时，单独让模型生成一组（跳过人设、不带工具）。"""
+    """补救：主回答没给选项时，单独让模型生成一组（跳过人设、不带工具）。
+
+    兼容两种返回形态：纯字符串数组，或 [{t,d}] / [{text,dir}] 对象数组。
+    """
     try:
         raw = run_agent(
             f"玩家刚说：「{question}」\n对方（孵化者）刚回答：「{(answer or '')[:300]}」\n"
@@ -536,7 +539,20 @@ def choices_only(question: str, answer: str = ""):
         items = data
     else:
         items = []
-    return [str(x).strip() for x in items if str(x).strip()][:4]
+    if not isinstance(items, list):
+        return []
+
+    out = []
+    for item in items:
+        if isinstance(item, dict):
+            label = str(item.get("t") or item.get("text") or item.get("label") or "").strip()
+            direction = str(item.get("d") or item.get("dir") or "").strip()
+        else:
+            label, direction = str(item).strip(), ""
+        if not label or "[object" in label:
+            continue                      # 兜底防线：脏数据不进界面
+        out.append({"text": label, "dir": direction if direction in CHOICE_DIRS else ""})
+    return out[:4]
 
 
 def _clean_markers(text: str) -> str:

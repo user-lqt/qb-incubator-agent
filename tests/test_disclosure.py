@@ -73,6 +73,25 @@ for stage_patch, expect_min in [({"suspicion": 0, "turn": 1}, 3), ({"suspicion":
     check("兜底选项都带倾向", all(c.get("dir") in ("contract", "suspicion", "despair", "resistance")
                              for c in fb))
 
+# 补救选项的解析（对象形态 / 纯字符串 / 脏数据）—— 这是 [object Object] 事故的真凶
+import game as _game  # noqa: E402
+from game import choices_only  # noqa: E402
+_raw_run = _game.run_agent
+try:
+    _game.run_agent = lambda *a, **k: ('{"choices":[{"t":"我想先知道代价","d":"suspicion"},'
+                                       '{"text":"好，那我试试","dir":"contract"}]}')
+    got = choices_only("测试")
+    check("补救选项：对象形态被正确解析",
+          bool(got) and got[0]["text"] == "我想先知道代价" and got[0]["dir"] == "suspicion")
+    _game.run_agent = lambda *a, **k: '{"choices":["纯字符串一条","第二条"]}'
+    got2 = choices_only("测试")
+    check("补救选项：纯字符串仍兼容", bool(got2) and got2[0]["text"] == "纯字符串一条")
+    _game.run_agent = lambda *a, **k: '{"choices":["[object Object]","正常一条"]}'
+    got3 = choices_only("测试")
+    check("补救选项：脏数据被过滤", len(got3) == 1 and got3[0]["text"] == "正常一条")
+finally:
+    _game.run_agent = _raw_run
+
 # 节奏：阈值与紧张度
 from game import RESOLVE_AT, tension  # noqa: E402
 st = new_state()

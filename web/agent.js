@@ -90,13 +90,21 @@ export class QBClient {
     const from = text.indexOf("{");
     const to = text.lastIndexOf("}");
     if (from < 0 || to <= from) return [];
+    let items = [];
     try {
       const data = JSON.parse(text.slice(from, to + 1));
-      const items = Array.isArray(data) ? data : (data.choices || data.options || []);
-      return items.map((x) => String(x).trim()).filter(Boolean).slice(0, 4);
+      items = Array.isArray(data) ? data : (data.choices || data.options || []);
     } catch {
       return [];
     }
+    if (!Array.isArray(items)) return [];
+    // 兼容两种形态：纯字符串 / {t,d} 或 {text,dir}（早期版本只认字符串，会把对象变成 [object Object]）
+    return items.map((it) => {
+      const isObj = it && typeof it === "object" && !Array.isArray(it);
+      const label = String(isObj ? (it.t || it.text || it.label || "") : it).trim();
+      const dir = isObj ? String(it.d || it.dir || "").trim() : "";
+      return { text: label, dir };
+    }).filter((c) => c.text && !c.text.includes("[object")).slice(0, 4);
   }
 
   /** 跑一轮内核循环：模型可能连续调用多个工具。返回纯文本答案。 */

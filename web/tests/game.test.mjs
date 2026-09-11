@@ -246,6 +246,11 @@ const mixed = toChoicePayload(["纯字符串", { text: "对象形态", dir: "con
 if (mixed.texts.join("|") !== "纯字符串|对象形态|短键形态" || mixed.dirs[1] !== "contract" || mixed.dirs[2] !== "despair") {
   console.log(`FAIL 兼容层解析异常：${JSON.stringify(mixed)}`); failed += 1;
 }
+// 脏数据防线：形如 "[object Object]" 的条目必须被过滤掉
+const dirty = toChoicePayload(["[object Object]", { text: "[object Object]", dir: "contract" }, "正常一条"]);
+if (dirty.texts.length !== 1 || dirty.texts[0] !== "正常一条") {
+  console.log(`FAIL 脏选项未被过滤：${JSON.stringify(dirty)}`); failed += 1;
+}
 
 console.log(failed ? `\n${failed} 条不通过` : `\n全部 ${Object.keys(CASES).length} 条结局判定 + 动态轮数断言通过（JS 版）`);
 process.exit(failed ? 1 : 0);

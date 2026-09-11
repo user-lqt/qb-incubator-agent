@@ -265,10 +265,11 @@ export function fallbackChoices(state) {
  */
 export function toChoicePayload(rich) {
   const list = rich || [];
-  return {
-    texts: list.map((c) => String(typeof c === "string" ? c : (c.text || c.t || ""))),
-    dirs: list.map((c) => (typeof c === "string" ? "" : (c.dir || c.d || ""))),
-  };
+  const text = (c) => String(typeof c === "string" ? c : (c.text || c.t || c.label || ""));
+  const dir = (c) => (typeof c === "string" ? "" : (c.dir || c.d || ""));
+  // 兜底防线：任何形如 "[object Object]" 的脏数据都不许进到界面
+  const pairs = list.map((c) => [text(c), dir(c)]).filter(([t]) => t && !t.includes("[object"));
+  return { texts: pairs.map(([t]) => t), dirs: pairs.map(([, d]) => d) };
 }
 
 const DECAY = { despair: -2, resistance: -2 };
