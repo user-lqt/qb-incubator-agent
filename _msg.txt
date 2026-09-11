@@ -1,0 +1,6 @@
+feat(web): 浏览器标签页图标改用 QB 头像
+
+- 新增 tools/make_favicon.py：从 pics/QB.webp 裁脸部特写，生成
+  web/favicon.png（64x64）与 web/apple-touch-icon.png（180x180，iOS 添加到主屏用）
+- index.html 头部加 <link rel="icon"> 与 <link rel="apple-touch-icon">
+- 脸部裁切（而非整只）是为了 32px 下也能看清红瞳与粉耳
