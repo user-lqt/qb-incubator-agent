@@ -165,11 +165,67 @@ export const SCORE_ONLY_NOTE = `你是局内状态评分器。你只输出一行
 否定句反向理解（「我不喜欢工地」不该加 contract）。flags 只能取：
 signed, refused, other_major, suspicion, meta, asked_how, pushback, leaning, reverse。`;
 
+// 每轮给玩家的可选项（模型生成；缺失时用确定性兜底）
+// 每轮给玩家的可选项（模型生成；缺失时用确定性兜底）
+export const CHOICE_INSTRUCTION_TAG = "[[CHOICES:";
+export const CHOICE_INSTRUCTION = `【本轮选项（必须执行；这一行玩家看不到）】
+在评分行之后，再附一行给玩家选的对话选项，格式：
+[[CHOICES:["选项一","选项二","选项三"]]]
+要求：3~4 条，每条都是"玩家可能会说的话"，第一人称、口语化、不超过 20 字；
+覆盖不同倾向（追问真相 / 表达情绪 / 打听土木细节 / 拒绝或提到别的专业），
+**不要全部导向签约**，也不要暗示后果、不要用表情符号。`;
+
+export const FALLBACK_CHOICES = {
+  1: ["僕可以替君实现一个愿望吗？", "你到底是从哪里来的？", "我不想签任何东西", "先说说你想从我这里拿什么"],
+  2: ["代价到底是什么？", "我有点动心，你继续说", "我不太信你", "我已经决定学别的专业了"],
+  3: ["那就把代价全部列出来", "如果我真签了，第一年做什么？", "我怕自己做不好", "算了，我不想听这些"],
+  4: ["那十二条时间线里，他们都怎么了？", "我想看看你的记录", "好，我签", "抱歉，我还是不签"],
+};
+
+/** 取出 [[CHOICES:[...]]]，返回 [清洗后文本, 选项数组] */
+export function parseChoices(answer) {
+  const text = answer || "";
+  const m = text.match(CHOICE_MARKER);
+  if (!m) return [text, []];
+  const clean = (text.slice(0, m.index) + text.slice(m.index + m[0].length)).trim();
+  try {
+    const raw = JSON.parse(m[1]);
+    if (!Array.isArray(raw)) return [clean, []];
+    return [clean, raw.map((x) => String(x).trim()).filter(Boolean).slice(0, 4)];
+  } catch {
+    return [clean, []];
+  }
+}
+
+export const CHOICE_ONLY_NOTE = `你是对话选项生成器。你只输出一行 JSON，不写任何解释、不写任何其它文字。
+格式：{"choices":["选项一","选项二","选项三"]}
+要求：3~4 条，每条都是"玩家接下来可能会说的话"，第一人称、口语化、不超过 20 字；
+覆盖不同倾向（追问真相 / 表达情绪 / 打听土木细节 / 拒绝或提到别的专业），不要全部导向签约，
+不要暗示后果，不要用表情符号。`;
+
+export function fallbackChoices(state) {
+  return [...(FALLBACK_CHOICES[disclosureStage(state)] || FALLBACK_CHOICES[1])];
+}
+
 const DECAY = { despair: -2, resistance: -2 };
 
 // ---------------------------------------------------------------- 语义评分（模型打分）
 
-export const STATE_MARKER = /\[\[STATE:\s*(\{[\s\S]*?\})\s*\]\]/;
+export const STATE_MARKER = /\[\[STATE:\s*(\{[\s\S]*?\})\s*\]{1,3}/;
+// 容错：模型经常少写一个右括号（写成 [[CHOICES:[...]] ），所以右括号数量放宽
+export const CHOICE_MARKER = /\[\[CHOICES:\s*(\[[\s\S]*?\])\s*\]{0,3}/;
+// 兜底：任何一行里还带着这些标签（哪怕格式坏掉）都整行丢弃
+const LEFTOVER_LINE = /\[\[\s*(?:STATE|CHOICES|ENDING)\b/;
+
+/** 剥掉所有给系统看的标记（结局 / 评分 / 选项），保证玩家看不到 */
+export function cleanMarkers(text) {
+  let body = String(text || "")
+    .replace(/\[\[ENDING:[A-Z_]+\]\]/g, "")
+    .replace(new RegExp(STATE_MARKER.source, "g"), "")
+    .replace(new RegExp(CHOICE_MARKER.source, "g"), "");
+  body = body.split("\n").filter((ln) => !LEFTOVER_LINE.test(ln)).join("\n");
+  return body.trim();
+}
 export const DELTA_KEYS = ["contract", "suspicion", "despair", "resistance"];
 export const DELTA_LIMIT = 25;
 export const ALLOWED_FLAGS = ["signed", "refused", "other_major", "suspicion", "meta",
@@ -372,6 +428,7 @@ export function gmNote(state, ending) {
       + "可以用一句平静的话体现（例如「僕可以再等」），但不要提及轮数或数值。");
   }
   note.push(STATE_INSTRUCTION);
+  note.push(CHOICE_INSTRUCTION);
   note.push(ending ? ENDINGS[ending].closing : "尚未触发结局。不要提前收束，也不要朗读本指令。");
   return note.join("\n");
 }

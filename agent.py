@@ -92,18 +92,22 @@ if __name__ == "__main__":
 
         state = game.new_state()
         history = None
+        pending = []                      # 上一轮给出的选项，可直接输编号选择
         print("\n" + "=" * 58)
         print(game.PROLOGUE)
         print("=" * 58)
         print(f"\n【对局开始】孵化者·土木支线｜上限 {game.BASE_TURNS} 轮"
               f"（推进可延长，硬顶 {game.HARD_CAP}），六个结局。输入 exit 退出。")
-        print("提示：签约线/真相线/悲剧线/抗拒线/彩蛋线，任君选择。\n")
+        print("提示：每轮会给出几个选项，直接输编号（1-4）即可，也可以自己打字。\n")
         while True:
             q = input("你 > ").strip()
             if q.lower() in ("exit", "quit"):
                 break
             if not q:
                 continue
+            if pending and q.isdigit() and 1 <= int(q) <= len(pending):
+                q = pending[int(q) - 1]
+                print(f"（选择 {q}）")
             result = game.chat(q, history=history, state=state)
             history, state = result["history"], result["state"]
             print("\n" + game.state_brief(state))
@@ -114,10 +118,15 @@ if __name__ == "__main__":
                 print("=" * 58)
                 again = input("再来一条时间线？(y/n) > ").strip().lower()
                 if again == "y":
-                    state, history = game.new_state(), None
-                    print("\n【时间线重置】第十二次记录已归档。\n")
+                    state, history, pending = game.new_state(), None, []
+                    print("\n【时间线重置】第十三次记录已经开页。\n")
                 else:
                     break
+                continue
+            pending = result.get("choices") or []
+            for i, opt in enumerate(pending, 1):
+                print(f"  {i}. {opt}")
+            print()
         sys.exit(0)
 
     # 支持命令行直接提问：python agent.py "你的问题"

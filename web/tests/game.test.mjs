@@ -1,7 +1,7 @@
 // 六结局触发测试（game.py / tests/test_endings.py 的 JS 版，不调用模型）
 import { BASE_TURNS, EXTEND_STEP, HARD_CAP, PROLOGUE, checkEnding, describeDelta, newState, updateState,
          parseStateMarker, applyModelState, snapshotOf, applyTurnState,
-         disclosureStage, detectLeak } from "../game.js";
+         disclosureStage, detectLeak, parseChoices, fallbackChoices } from "../game.js";
 
 const CASES = {
   E_SIGN: ["我签！我愿意转专业去土木"],
@@ -177,6 +177,37 @@ if (detectLeak("僕是孵化者。", 2).length !== 0) { console.log("FAIL 第 2 
 if (detectLeak("希望到绝望的相变。", 3).length === 0) { console.log("FAIL 第 3 级应禁用'相变'"); failed += 1; }
 if (detectLeak("代价是日晒、驻场、工期节点。", 3).length !== 0) { console.log("FAIL 第 3 级应允许代价三项"); failed += 1; }
 if (detectLeak("孵化者收集能量，形成耐久。", 4).length !== 0) { console.log("FAIL 第 4 级应无限制"); failed += 1; }
+
+// ---- 对话选项：标记解析 + 兜底 ----
+const [cleanCh, chs] = parseChoices('僕这样说。[[STATE:{"contract":1}]]\n[[CHOICES:["继续问","我考虑一下","算了"]]]');
+if (cleanCh.includes("CHOICES") || chs.length !== 3 || chs[0] !== "继续问") {
+  console.log(`FAIL 选项解析失败：clean=${JSON.stringify(cleanCh)} chs=${JSON.stringify(chs)}`); failed += 1;
+}
+const [, badCh] = parseChoices("嗯[[CHOICES:[不是数组}]]");
+if (badCh.length !== 0) { console.log("FAIL 坏选项应返回空数组"); failed += 1; }
+const [, notArray] = parseChoices('[[CHOICES:"字符串不算"]]');
+if (notArray.length !== 0) { console.log("FAIL 非数组选项应被丢弃"); failed += 1; }
+for (let st = 1; st <= 4; st += 1) {
+  const fb = fallbackChoices({ ...newState(), suspicion: st >= 4 ? 70 : st === 3 ? 45 : st === 2 ? 25 : 0, turn: 1 });
+  if (fb.length < 3 || fb.length > 4) { console.log(`FAIL 第 ${st} 级兜底选项数量异常：${fb.length}`); failed += 1; }
+}
+
+// 畸形标记容错（模型经常少写一个右括号）
+const MALFORMED = [
+  '正文。[[CHOICES:["甲","乙","丙"]]',      // 少一个 ]
+  '正文。[[CHOICES:["甲","乙"]]]]',         // 多一个 ]
+  '正文。[[STATE:{"contract":5}]',          // STATE 少一个 ]
+  '正文。[[STATE:{"contract":5}]]]',
+];
+for (const text of MALFORMED) {
+  const [clean1] = parseStateMarker(text);
+  const [clean2, chs] = parseChoices(clean1);
+  const leftover = ["[[STATE", "[[CHOICES", "]]"].filter((t) => clean2.includes(t));
+  if (leftover.length) { console.log(`FAIL 畸形标记残留：${text} -> ${leftover}`); failed += 1; }
+  if (text.includes("CHOICES") && !text.includes("少一个") && chs.length < 2) {
+    console.log(`FAIL 畸形选项未解析：${text} -> ${chs.length} 条`); failed += 1;
+  }
+}
 
 console.log(failed ? `\n${failed} 条不通过` : `\n全部 ${Object.keys(CASES).length} 条结局判定 + 动态轮数断言通过（JS 版）`);
 process.exit(failed ? 1 : 0);

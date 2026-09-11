@@ -232,7 +232,11 @@ def _clamp(state: dict) -> None:
 # ---------------------------------------------------------------- 语义评分（模型打分）
 
 # 让模型在回答末尾附一行机器可读的状态增量；系统解析后从玩家可见文本里移除。
-STATE_MARKER = re.compile(r"\[\[STATE:\s*(\{.*?\})\s*\]\]", re.S)
+STATE_MARKER = re.compile(r"\[\[STATE:\s*(\{[\s\S]*?\})\s*\]{1,3}", re.S)
+# 容错：模型经常少写一个右括号（写成 [[CHOICES:[...]] ），所以右括号数量放宽
+CHOICE_MARKER = re.compile(r"\[\[CHOICES:\s*(\[[\s\S]*?\])\s*\]{0,3}", re.S)
+# 兜底：任何一行里还带着这些标签（哪怕格式坏掉）都整行丢弃，绝不让玩家看到
+_LEFTOVER_LINE = re.compile(r"\[\[\s*(?:STATE|CHOICES|ENDING)\b")
 DELTA_KEYS = ("contract", "suspicion", "despair", "resistance")
 DELTA_LIMIT = 25              # 单轮单维度增量上限，防止模型给出离谱数值
 ALLOWED_FLAGS = {"signed", "refused", "other_major", "suspicion", "meta",
@@ -409,6 +413,89 @@ def check_ending(state: dict) -> str:
 
 # ---------------------------------------------------------------- 游戏主持指令
 
+# 每轮给玩家的可选项（模型生成；缺失时用确定性兜底）
+CHOICE_MARKER = re.compile(r"\[\[CHOICES:\s*(\[[\s\S]*?\])\s*\]{0,3}", re.S)
+CHOICE_INSTRUCTION = """【本轮选项（必须执行；这一行玩家看不到）】
+在评分行之后，再附一行给玩家选的对话选项，格式：
+[[CHOICES:["选项一","选项二","选项三"]]]
+要求：3~4 条，每条都是"玩家可能会说的话"，第一人称、口语化、不超过 20 字；
+覆盖不同倾向（追问真相 / 表达情绪 / 打听土木细节 / 拒绝或提到别的专业），
+**不要全部导向签约**，也不要暗示后果、不要用表情符号。"""
+
+# 兜底选项：按披露级别给一组（模型没给 CHOICES 时用）
+FALLBACK_CHOICES = {
+    1: ["僕可以替君实现一个愿望吗？", "你到底是从哪里来的？", "我不想签任何东西", "先说说你想从我这里拿什么"],
+    2: ["代价到底是什么？", "我有点动心，你继续说", "我不太信你", "我已经决定学别的专业了"],
+    3: ["那就把代价全部列出来", "如果我真签了，第一年做什么？", "我怕自己做不好", "算了，我不想听这些"],
+    4: ["那十二条时间线里，他们都怎么了？", "我想看看你的记录", "好，我签", "抱歉，我还是不签"],
+}
+
+
+def parse_choices(answer: str):
+    """取出 [[CHOICES:[...]]]，返回 (清洗后文本, 选项列表)。"""
+    if not answer:
+        return answer or "", []
+    match = CHOICE_MARKER.search(answer)
+    if not match:
+        return answer, []
+    clean = (answer[:match.start()] + answer[match.end():]).strip()
+    try:
+        raw = json.loads(match.group(1))
+    except json.JSONDecodeError:
+        return clean, []
+    if not isinstance(raw, list):
+        return clean, []
+    items = [str(x).strip() for x in raw if str(x).strip()]
+    return clean, items[:4]
+
+
+def fallback_choices(state: dict) -> list:
+    return list(FALLBACK_CHOICES.get(disclosure_stage(state), FALLBACK_CHOICES[1]))
+
+
+CHOICE_ONLY_NOTE = """你是对话选项生成器。你只输出一行 JSON，不写任何解释、不写任何其它文字。
+格式：{"choices":["选项一","选项二","选项三"]}
+要求：3~4 条，每条都是"玩家接下来可能会说的话"，第一人称、口语化、不超过 20 字；
+覆盖不同倾向（追问真相 / 表达情绪 / 打听土木细节 / 拒绝或提到别的专业），不要全部导向签约，
+不要暗示后果，不要用表情符号。"""
+
+
+def choices_only(question: str, answer: str = ""):
+    """补救：主回答没给选项时，单独让模型生成一组（跳过人设、不带工具）。"""
+    try:
+        raw = run_agent(
+            f"玩家刚说：「{question}」\n对方（孵化者）刚回答：「{(answer or '')[:300]}」\n"
+            "请只输出那一行 JSON。",
+            return_history=False, override_system=CHOICE_ONLY_NOTE, use_tools=False,
+        )
+    except Exception:
+        return []
+    text = raw or ""
+    data = None
+    try:
+        body = text[text.find("{"):text.rfind("}") + 1]
+        data = json.loads(body) if body else None
+    except Exception:
+        data = None
+    if isinstance(data, dict):
+        items = data.get("choices") or data.get("options") or []
+    elif isinstance(data, list):
+        items = data
+    else:
+        items = []
+    return [str(x).strip() for x in items if str(x).strip()][:4]
+
+
+def _clean_markers(text: str) -> str:
+    """剥掉所有给系统看的标记（结局 / 评分 / 选项），保证玩家看不到。"""
+    body = ENDING_MARK.sub("", text or "")
+    body = STATE_MARKER.sub("", body)
+    body = CHOICE_MARKER.sub("", body)
+    # 兜底：格式化失败的标记整行丢弃
+    kept = [ln for ln in body.split("\n") if not _LEFTOVER_LINE.search(ln)]
+    return "\n".join(kept).strip()
+
+
 # 主回答忘了附评分时的补救：单独问一次，只要 JSON
 SCORE_ONLY_NOTE = """你是局内状态评分器。你只输出一行 JSON，不写任何解释、不写任何其它文字。
 格式：{"contract":0,"suspicion":0,"despair":0,"resistance":0,"flags":[],"reason":"一句话"}
@@ -467,6 +554,7 @@ def _gm_note(state: dict, ending: str) -> str:
             "可以在回答里用一句平静的话体现这一点（例如「僕可以再等」），但不要提及轮数或数值。"
         )
     note.append(STATE_INSTRUCTION)
+    note.append(CHOICE_INSTRUCTION)
     if ending:
         note.append(ENDINGS[ending]["closing"])
     else:
@@ -501,6 +589,7 @@ def chat(question: str, history=None, state=None) -> dict:
 
     # 语义评分：模型在回答末尾附的 [[STATE:{...}]] 是本轮的权威判定
     answer, model_data = parse_state_marker(answer)
+    answer, choices = parse_choices(answer)
     score_source = "model" if isinstance(model_data, dict) else ""
     if not isinstance(model_data, dict):
         # 主回答忘了附评分 -> 补救：单独问一次，只要 JSON（避免误退化成关键词机）
@@ -530,8 +619,7 @@ def chat(question: str, history=None, state=None) -> dict:
             "回答最后照常附上 [[STATE:...]] 评分行。"
         )
         rewritten, history = run_agent(fix, history=history, return_history=True, extra_system="")
-        rewritten = ENDING_MARK.sub("", rewritten or "").strip()
-        rewritten, _ = parse_state_marker(rewritten)
+        rewritten = _clean_markers(rewritten)
         if rewritten and not detect_leak(rewritten, stage):
             answer = rewritten
             state["leak_rewrites"] = int(state.get("leak_rewrites", 0)) + 1
@@ -547,13 +635,18 @@ def chat(question: str, history=None, state=None) -> dict:
             cue, history=history, return_history=True, extra_system="",
         )
         answer = (closing or answer)
-        answer = ENDING_MARK.sub("", answer).strip()
+        answer = _clean_markers(answer)
         answer = f"{answer}\n\n——【{ENDINGS[ending]['title']}】{ENDINGS[ending]['tagline']}"
+
+    answer = _clean_markers(answer)          # 最后再兜一次，确保没有任何标记漏给玩家
+    if not choices:
+        choices = choices_only(question, answer) or fallback_choices(state)
 
     return {
         "answer": answer,
         "history": history,
         "state": state,
+        "choices": choices or fallback_choices(state),
         "ending": ending,
         "ending_title": ENDINGS[ending]["title"] if ending else "",
         "ending_tagline": ENDINGS[ending]["tagline"] if ending else "",

@@ -1,10 +1,10 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>孵化者 QB · 契约终端</title>
-<meta name="description" content="孵化者 QB：一个只会劝你学土木的 Agent。12 轮对局，六个结局。自带 API key，纯前端运行。">
+<title>瀛靛寲鑰?QB 路 濂戠害缁堢</title>
+<meta name="description" content="瀛靛寲鑰?QB锛氫竴涓彧浼氬姖浣犲鍦熸湪鐨?Agent銆?2 杞灞€锛屽叚涓粨灞€銆傝嚜甯?API key锛岀函鍓嶇杩愯銆?>
 <style>
   :root { --pink:#ff9ec7; --ink:#2b2b33; --bg:#fdf7fa; --line:#f0e2e9; }
   * { box-sizing: border-box; }
@@ -36,6 +36,13 @@
   .ghbtn.star b { font-variant-numeric:tabular-nums; }
   .starcall { margin-top:8px; }
   .starcall a { color:#b3356b; font-weight:600; }
+  /* 瀵硅瘽閫夐」 */
+  .choices { display:flex; flex-wrap:wrap; gap:8px; margin:2px 0 2px 44px; }
+  .choice { border:1px solid #f0d8e4; background:rgba(255,255,255,.92); color:#7a3355;
+            border-radius:999px; padding:8px 14px; font:inherit; font-size:14px; cursor:pointer;
+            box-shadow:0 1px 4px rgba(180,140,160,.10); transition:all .18s; text-align:left; }
+  .choice:hover { background:#ffeef5; border-color:var(--pink); color:#b3356b; transform:translateY(-1px); }
+  .choice:disabled { opacity:.5; cursor:default; transform:none; }
   #keyState { font-size:12px; padding:4px 9px; border-radius:999px; background:#f3e8ee; color:#7b6270; white-space:nowrap; }
   #keyState.ok { background:#e8f7ee; color:#1f7a45; }
   #keyState.bad { background:#fff0f6; color:#b3356b; }
@@ -48,7 +55,7 @@
                  overflow:hidden; box-shadow:inset 0 1px 2px rgba(150,110,130,.12); }
   #bars .fill { display:block; height:100%; width:0; border-radius:4px;
                 transition:width .35s, background .35s; }
-  /* 四个维度各用一种颜色，方便一眼看出哪条在动 */
+  /* 鍥涗釜缁村害鍚勭敤涓€绉嶉鑹诧紝鏂逛究涓€鐪肩湅鍑哄摢鏉″湪鍔?*/
   #bars .fill.contract  { background:linear-gradient(90deg,#ffb3d3,#ff8bbd); }
   #bars .fill.suspicion { background:linear-gradient(90deg,#c9a1f5,#a877e8); }
   #bars .fill.despair   { background:linear-gradient(90deg,#a9b6d6,#8095c4); }
@@ -64,14 +71,14 @@
   main { flex:1 1 auto; min-height:0; width:100%; max-width:840px; margin:0 auto; padding:18px 22px;
          overflow-y:auto; overscroll-behavior:contain;
          scrollbar-width:thin; scrollbar-color:rgba(255,158,199,.75) transparent; }
-  /* 细粉色滚动条，替代浏览器默认的粗灰条 */
+  /* 缁嗙矇鑹叉粴鍔ㄦ潯锛屾浛浠ｆ祻瑙堝櫒榛樿鐨勭矖鐏版潯 */
   main::-webkit-scrollbar { width:10px; }
   main::-webkit-scrollbar-track { background:transparent; }
   main::-webkit-scrollbar-thumb { background:rgba(255,158,199,.65); border-radius:999px;
                                   border:3px solid transparent; background-clip:content-box; }
   main::-webkit-scrollbar-thumb:hover { background:rgba(255,158,199,.95); background-clip:content-box; }
   #log { display:flex; flex-direction:column; gap:14px; }
-  /* 包裹层用 from-* 类名，避免和气泡的 .me/.qb/.sys 装饰样式打架 */
+  /* 鍖呰９灞傜敤 from-* 绫诲悕锛岄伩鍏嶅拰姘旀场鐨?.me/.qb/.sys 瑁呴グ鏍峰紡鎵撴灦 */
   .msg { display:flex; gap:10px; align-items:flex-start; width:100%; }
   .msg.from-me { justify-content:flex-end; }
   .msg.from-sys { justify-content:center; }
@@ -98,12 +105,12 @@
   #reset { background:#f3e8ee; color:#7b6270; }
   button[disabled] { opacity:.5; cursor:default; }
   .hint { flex:0 0 auto; max-width:840px; margin:10px auto 0; padding:0 18px; color:#7d6673; font-size:12px; }
-  @media (min-width: 561px) { body { overflow:hidden; } }   /* 桌面端只让消息区滚动，避免双层滚动条 */
+  @media (min-width: 561px) { body { overflow:hidden; } }   /* 妗岄潰绔彧璁╂秷鎭尯婊氬姩锛岄伩鍏嶅弻灞傛粴鍔ㄦ潯 */
   @media (max-width: 560px) {
-    body { background-attachment: scroll; }        /* 移动端 fixed 背景会卡顿 */
+    body { background-attachment: scroll; }        /* 绉诲姩绔?fixed 鑳屾櫙浼氬崱椤?*/
     header { gap:8px; }
     #key { width:100%; order:5; } #model { order:6; }
-    /* 窄屏才让输入区换行：textarea 独占一行，两个按钮平分下一行 */
+    /* 绐勫睆鎵嶈杈撳叆鍖烘崲琛岋細textarea 鐙崰涓€琛岋紝涓や釜鎸夐挳骞冲垎涓嬩竴琛?*/
     .row { flex-wrap:wrap; }
     textarea { flex:1 1 100%; }
     footer button { flex:1 1 0; }
@@ -113,21 +120,21 @@
 </head>
 <body>
 <header>
-  <img class="avatar" id="avatar" src="./qb.png" alt="孵化者">
-  <b>孵化者 QB</b>
-  <input id="key" type="password" placeholder="DeepSeek API key（sk-…）" autocomplete="off">
+  <img class="avatar" id="avatar" src="./qb.png" alt="瀛靛寲鑰?>
+  <b>瀛靛寲鑰?QB</b>
+  <input id="key" type="password" placeholder="DeepSeek API key锛坰k-鈥︼級" autocomplete="off">
   <select id="model">
     <option value="deepseek-chat">deepseek-chat</option>
     <option value="deepseek-reasoner">deepseek-reasoner</option>
   </select>
   <span class="sp"></span>
-  <span id="keyState" class="bad">未配置 key</span>
-  <button id="save">保存 key</button>
+  <span id="keyState" class="bad">鏈厤缃?key</span>
+  <button id="save">淇濆瓨 key</button>
   <a class="ghbtn" href="https://github.com/user-lqt/qb-incubator-agent"
-     target="_blank" rel="noopener">⌂ 源码仓库</a>
-  <a class="ghbtn star" id="starBtn" title="给这个仓库点个 Star"
+     target="_blank" rel="noopener">鈱?婧愮爜浠撳簱</a>
+  <a class="ghbtn star" id="starBtn" title="缁欒繖涓粨搴撶偣涓?Star"
      href="https://github.com/user-lqt/qb-incubator-agent"
-     target="_blank" rel="noopener">★ Star <b id="starCount">·</b></a>
+     target="_blank" rel="noopener">鈽?Star <b id="starCount">路</b></a>
 </header>
 
 <div id="bars"></div>
@@ -136,19 +143,18 @@
 <main><div id="log"></div></main>
 <noscript>
   <div style="max-width:840px;margin:18px auto;padding:0 18px;color:#7a3355">
-    这个页面需要 JavaScript 才能运行（模型调用在浏览器里完成）。请允许本站脚本后刷新。
-  </div>
+    杩欎釜椤甸潰闇€瑕?JavaScript 鎵嶈兘杩愯锛堟ā鍨嬭皟鐢ㄥ湪娴忚鍣ㄩ噷瀹屾垚锛夈€傝鍏佽鏈珯鑴氭湰鍚庡埛鏂般€?  </div>
 </noscript>
-<div class="hint">提示：浏览器版可用工具为 天气 / IP 定位 / 英文科技资讯 / 时间 / 计算；中文搜索与行业报告检索在 Python 版里。</div>
+<div class="hint">鎻愮ず锛氭祻瑙堝櫒鐗堝彲鐢ㄥ伐鍏蜂负 澶╂皵 / IP 瀹氫綅 / 鑻辨枃绉戞妧璧勮 / 鏃堕棿 / 璁＄畻锛涗腑鏂囨悳绱笌琛屼笟鎶ュ憡妫€绱㈠湪 Python 鐗堥噷銆?/div>
 
 <footer><div class="row">
-  <textarea id="q" placeholder="输入问题，Enter 发送" rows="1"></textarea>
-  <button id="send">发送</button><button id="reset">重新开始</button>
+  <textarea id="q" placeholder="杈撳叆闂锛孍nter 鍙戦€? rows="1"></textarea>
+  <button id="send">鍙戦€?/button><button id="reset">閲嶆柊寮€濮?/button>
 </div></footer>
 
 <script type="module">
-// v 是资源版本号：每次改动 web/ 下的 js，把它 +1，可避免"新页面 + 旧缓存模块"导致白屏
-const V = "?v=11";
+// v 鏄祫婧愮増鏈彿锛氭瘡娆℃敼鍔?web/ 涓嬬殑 js锛屾妸瀹?+1锛屽彲閬垮厤"鏂伴〉闈?+ 鏃х紦瀛樻ā鍧?瀵艰嚧鐧藉睆
+const V = "?v=13";
 const { QBClient } = await import("./agent.js" + V);
 const { BASE_TURNS, HARD_CAP, PROLOGUE, describeDelta } = await import("./game.js" + V);
 
@@ -157,17 +163,16 @@ const log = $("log"), keyInput = $("key"), modelSelect = $("model");
 
 let client = null;
 
-// 兜底：脚本一旦出错（旧缓存模块、网络问题等），在页面上写出原因，避免整页空白
-function bootFail(msg) {
+// 鍏滃簳锛氳剼鏈竴鏃﹀嚭閿欙紙鏃х紦瀛樻ā鍧椼€佺綉缁滈棶棰樼瓑锛夛紝鍦ㄩ〉闈笂鍐欏嚭鍘熷洜锛岄伩鍏嶆暣椤电┖鐧?function bootFail(msg) {
   const box = document.createElement("div");
   box.className = "b sys";
-  box.textContent = `页面没能启动：${msg}\n按 Ctrl+F5 强制刷新可清掉旧缓存；仍有问题请到仓库提 Issue。`;
+  box.textContent = `椤甸潰娌¤兘鍚姩锛?{msg}\n鎸?Ctrl+F5 寮哄埗鍒锋柊鍙竻鎺夋棫缂撳瓨锛涗粛鏈夐棶棰樿鍒颁粨搴撴彁 Issue銆俙;
   document.body.appendChild(box);
 }
-window.addEventListener("error", (e) => bootFail(e.message || "未知脚本错误"));
-window.addEventListener("unhandledrejection", (e) => bootFail(String(e.reason || "未知错误")));
+window.addEventListener("error", (e) => bootFail(e.message || "鏈煡鑴氭湰閿欒"));
+window.addEventListener("unhandledrejection", (e) => bootFail(String(e.reason || "鏈煡閿欒")));
 
-// 头像加载链：优先 qb.png（可自行替换），再试 qb.jpg，最后回退内置矢量图 qb.svg
+// 澶村儚鍔犺浇閾撅細浼樺厛 qb.png锛堝彲鑷鏇挎崲锛夛紝鍐嶈瘯 qb.jpg锛屾渶鍚庡洖閫€鍐呯疆鐭㈤噺鍥?qb.svg
 const AVATAR_CHAIN = ["./qb.png", "./qb.jpg", "./qb.svg"];
 
 function wireAvatar(img) {
@@ -184,7 +189,7 @@ function wireAvatar(img) {
 function avatarImg() {
   const img = document.createElement("img");
   img.className = "avatar";
-  img.alt = "孵化者";
+  img.alt = "瀛靛寲鑰?;
   return wireAvatar(img);
 }
 
@@ -197,18 +202,16 @@ function add(cls, text) {
   d.textContent = text;
   wrap.appendChild(d);
   log.appendChild(wrap);
-  const scroller = document.querySelector("main");   // 消息区自己滚动（页面本身不再滚动）
-  scroller.scrollTop = scroller.scrollHeight;
+  const scroller = document.querySelector("main");   // 娑堟伅鍖鸿嚜宸辨粴鍔紙椤甸潰鏈韩涓嶅啀婊氬姩锛?  scroller.scrollTop = scroller.scrollHeight;
   return wrap;
 }
 
 function metric(key, label, value, changed, prevValue) {
   const m = document.createElement("div");
   m.className = "m";
-  m.title = `${label}：${value}/100` + (changed ? `（本轮 ${value - prevValue >= 0 ? "+" : ""}${value - prevValue}）` : "");
+  m.title = `${label}锛?{value}/100` + (changed ? `锛堟湰杞?${value - prevValue >= 0 ? "+" : ""}${value - prevValue}锛塦 : "");
   const delta = changed ? ` <b class="dv">${value >= prevValue ? "+" : ""}${value - prevValue}</b>` : "";
-  // 非零值给个最小宽度，避免 1~5 分时细得像没有
-  const minW = value > 0 ? "min-width:6px;" : "";
+  // 闈為浂鍊肩粰涓渶灏忓搴︼紝閬垮厤 1~5 鍒嗘椂缁嗗緱鍍忔病鏈?  const minW = value > 0 ? "min-width:6px;" : "";
   m.innerHTML = `<span>${label} ${value}${delta}</span>`
     + `<span class="track"><span class="fill ${key}${changed ? " pulse" : ""}"`
     + ` style="width:${value}%;${minW}"></span></span>`;
@@ -229,18 +232,18 @@ function renderBars(state) {
   bars.style.display = "flex";
   bars.innerHTML = "";
   const pairs = [
-    ["contract", "契约", state.contract, prev.contract],
-    ["suspicion", "怀疑", state.suspicion, prev.suspicion],
-    ["despair", "绝望", state.despair, prev.despair],
-    ["resistance", "抗拒", state.resistance, prev.resistance],
+    ["contract", "濂戠害", state.contract, prev.contract],
+    ["suspicion", "鎬€鐤?, state.suspicion, prev.suspicion],
+    ["despair", "缁濇湜", state.despair, prev.despair],
+    ["resistance", "鎶楁嫆", state.resistance, prev.resistance],
   ];
   for (const [key, label, value, prevValue] of pairs) {
     bars.appendChild(metric(key, label, value, value !== prevValue, prevValue));
   }
   const t = document.createElement("div");
   t.className = "m";
-  const ext = state.extensions ? `已延长 ${state.extensions} 次` : "可延长";
-  t.textContent = `第 ${state.turn}/${state.max_turns} 轮（${ext}）`;
+  const ext = state.extensions ? `宸插欢闀?${state.extensions} 娆 : "鍙欢闀?;
+  t.textContent = `绗?${state.turn}/${state.max_turns} 杞紙${ext}锛塦;
   bars.appendChild(t);
   lastState = { ...state };
 }
@@ -249,19 +252,42 @@ function showEnding(title, tagline) {
   if (!title) return;
   const banner = $("banner");
   banner.style.display = "block";
-  banner.innerHTML = `<b>结局：${title}</b>${tagline || ""}<br>点「重新开始」可开启下一条时间线。`;
-  // 签约结局的彩蛋：QB 亲自要一枚星标作为见证
-  if (title.includes("契约成立")) {
+  banner.innerHTML = `<b>缁撳眬锛?{title}</b>${tagline || ""}<br>鐐广€岄噸鏂板紑濮嬨€嶅彲寮€鍚笅涓€鏉℃椂闂寸嚎銆俙;
+  // 绛剧害缁撳眬鐨勫僵铔嬶細QB 浜茶嚜瑕佷竴鏋氭槦鏍囦綔涓鸿璇?  if (title.includes("濂戠害鎴愮珛")) {
     const call = document.createElement("div");
     call.className = "starcall";
-    call.innerHTML = '僕需要一个见证：<a href="https://github.com/user-lqt/qb-incubator-agent"'
-      + ' target="_blank" rel="noopener">给这条时间线的仓库点一枚 ★ Star</a>'
-      + '。这在计算上更高效——比记住君容易。';
+    call.innerHTML = '鍍曢渶瑕佷竴涓璇侊細<a href="https://github.com/user-lqt/qb-incubator-agent"'
+      + ' target="_blank" rel="noopener">缁欒繖鏉℃椂闂寸嚎鐨勪粨搴撶偣涓€鏋?鈽?Star</a>'
+      + '銆傝繖鍦ㄨ绠椾笂鏇撮珮鏁堚€斺€旀瘮璁颁綇鍚涘鏄撱€?;
     banner.appendChild(call);
   }
 }
 
-// 实时星标数：GitHub API（匿名 60 次/小时），本地缓存 10 分钟避免打爆限额
+// 瀹炴椂鏄熸爣鏁帮細GitHub API锛堝尶鍚?60 娆?灏忔椂锛夛紝鏈湴缂撳瓨 10 鍒嗛挓閬垮厤鎵撶垎闄愰
+function showChoices(list) {
+  clearChoices();
+  if (!list || !list.length) return;
+  const box = document.createElement("div");
+  box.className = "choices msg from-sys";
+  box.id = "choiceBox";
+  for (const text of list) {
+    const btn = document.createElement("button");
+    btn.className = "choice";
+    btn.type = "button";
+    btn.textContent = text;
+    btn.onclick = () => { ask(text); };
+    box.appendChild(btn);
+  }
+  log.appendChild(box);
+  const scroller = document.querySelector("main");
+  scroller.scrollTop = scroller.scrollHeight;
+}
+
+function clearChoices() {
+  const old = document.getElementById("choiceBox");
+  if (old) old.remove();
+}
+
 const STAR_API = "https://api.github.com/repos/user-lqt/qb-incubator-agent";
 async function loadStars() {
   const el = $("starCount");
@@ -276,7 +302,7 @@ async function loadStars() {
     el.textContent = n;
     localStorage.setItem("qb_stars", JSON.stringify({ n, at: Date.now() }));
   } catch {
-    // 限额 / 断网 / file:// 打开时：换成 shields.io 静态徽章图，仍然显示星标数
+    // 闄愰 / 鏂綉 / file:// 鎵撳紑鏃讹細鎹㈡垚 shields.io 闈欐€佸窘绔犲浘锛屼粛鐒舵樉绀烘槦鏍囨暟
     el.outerHTML = '<img alt="GitHub stars" height="18" style="vertical-align:middle"'
       + ' src="https://img.shields.io/github/stars/user-lqt/qb-incubator-agent?style=flat-square&color=ff9ec7">';
   }
@@ -296,37 +322,39 @@ function autoGrow(el) {
 function refreshKeyState() {
   const has = !!keyInput.value.trim();
   const el = $("keyState");
-  el.textContent = has ? "key 已就绪" : "未配置 key";
+  el.textContent = has ? "key 宸插氨缁? : "鏈厤缃?key";
   el.className = has ? "ok" : "bad";
   $("send").disabled = !has;
-  $("q").placeholder = has ? "输入问题，Enter 发送" : "先填入 API key 再开始";
+  $("q").placeholder = has ? "杈撳叆闂锛孍nter 鍙戦€? : "鍏堝～鍏?API key 鍐嶅紑濮?;
 }
 
-async function ask() {
-  const text = $("q").value.trim();
+async function ask(preset) {
+  const text = (preset !== undefined ? String(preset) : $("q").value).trim();
   if (!text) return;
   if (!client) {
     client = buildClient();
-    if (!client) { add("sys", "请先在右上角填入自己的 DeepSeek API key（在 platform.deepseek.com 申请），点「保存 key」后即可开始。"); return; }
+    if (!client) { add("sys", "璇峰厛鍦ㄥ彸涓婅濉叆鑷繁鐨?DeepSeek API key锛堝湪 platform.deepseek.com 鐢宠锛夛紝鐐广€屼繚瀛?key銆嶅悗鍗冲彲寮€濮嬨€?); return; }
   }
+  clearChoices();
   add("me", text);
   $("q").value = "";
   autoGrow($("q"));
   $("send").disabled = true;
-  const waiting = add("sys", "僕在计算……");
+  const waiting = add("sys", "鍍曞湪璁＄畻鈥︹€?);
   try {
     const r = await client.turn(text);
     waiting.remove();
     add("qb", r.answer);
     renderBars(r.state);
-    const src = { model: "语义判定", rescue: "语义判定·补救", keywords: "关键词兜底" }[r.state.score_source]
+    const src = { model: "璇箟鍒ゅ畾", rescue: "璇箟鍒ゅ畾路琛ユ晳", keywords: "鍏抽敭璇嶅厹搴? }[r.state.score_source]
       || r.state.score_source || "";
-    add("sys", describeDelta(prevState, r.state) + (src ? `　［判定：${src}］` : ""));
+    add("sys", describeDelta(prevState, r.state) + (src ? `銆€锛诲垽瀹氾細${src}锛絗 : ""));
     prevState = { ...r.state };
     showEnding(r.ending_title, r.ending_tagline);
+    if (!r.ending) showChoices(r.choices);
   } catch (e) {
     waiting.remove();
-    add("sys", "出错了：" + e.message + "（检查 key、余额与网络；跨域失败请换用本地 http 服务器打开本页）");
+    add("sys", "鍑洪敊浜嗭細" + e.message + "锛堟鏌?key銆佷綑棰濅笌缃戠粶锛涜法鍩熷け璐ヨ鎹㈢敤鏈湴 http 鏈嶅姟鍣ㄦ墦寮€鏈〉锛?);
   } finally {
     $("send").disabled = false;
     $("q").focus();
@@ -338,14 +366,15 @@ $("reset").onclick = () => {
   client = buildClient() || new QBClient({ apiKey: "dummy", model: modelSelect.value });
   client.reset();
   log.innerHTML = "";
+  clearChoices();
   $("banner").style.display = "none";
   lastState = null;
   prevState = emptyState();
   renderBars(emptyState());
-  add("sys", "时间线已重置。第十二次轮回开始——或者，是第十三次。");
+  add("sys", "鏃堕棿绾垮凡閲嶇疆銆傜鍗佷簩娆¤疆鍥炲紑濮嬧€斺€旀垨鑰咃紝鏄鍗佷笁娆°€?);
   add("qb", PROLOGUE);
   if (!keyInput.value.trim()) {
-    add("sys", "先在右上角填入你自己的 DeepSeek API key（只存这台设备的浏览器），再开始对话。");
+    add("sys", "鍏堝湪鍙充笂瑙掑～鍏ヤ綘鑷繁鐨?DeepSeek API key锛堝彧瀛樿繖鍙拌澶囩殑娴忚鍣級锛屽啀寮€濮嬪璇濄€?);
   }
 };
 
@@ -355,8 +384,8 @@ $("save").onclick = () => {
   client = buildClient();
   refreshKeyState();
   add("sys", client
-    ? "key 已保存在本机浏览器（只在请求模型时作为 authorization 使用，不上传到任何第三方服务器）。现在可以直接提问了。"
-    : "key 是空的。去 platform.deepseek.com 申请一个 sk- 开头的 key，粘到右上角输入框。");
+    ? "key 宸蹭繚瀛樺湪鏈満娴忚鍣紙鍙湪璇锋眰妯″瀷鏃朵綔涓?authorization 浣跨敤锛屼笉涓婁紶鍒颁换浣曠涓夋柟鏈嶅姟鍣級銆傜幇鍦ㄥ彲浠ョ洿鎺ユ彁闂簡銆?
+    : "key 鏄┖鐨勩€傚幓 platform.deepseek.com 鐢宠涓€涓?sk- 寮€澶寸殑 key锛岀矘鍒板彸涓婅杈撳叆妗嗐€?);
 };
 
 keyInput.value = localStorage.getItem("qb_key") || "";
@@ -374,14 +403,12 @@ modelSelect.addEventListener("change", () => {
 client = buildClient();
 refreshKeyState();
 wireAvatar($("avatar"));
-renderBars(emptyState());   // 进页面就显示四条状态，别等第一次提问才出现
-loadStars();                // 取一次星标数（有缓存，失败就静默降级）
-
-// 开场：世界观序章 + 上手提示（序章文本来自 game.js，与命令行版同源）
-add("qb", PROLOGUE);
+renderBars(emptyState());   // 杩涢〉闈㈠氨鏄剧ず鍥涙潯鐘舵€侊紝鍒瓑绗竴娆℃彁闂墠鍑虹幇
+loadStars();                // 鍙栦竴娆℃槦鏍囨暟锛堟湁缂撳瓨锛屽け璐ュ氨闈欓粯闄嶇骇锛?
+// 寮€鍦猴細涓栫晫瑙傚簭绔?+ 涓婃墜鎻愮ず锛堝簭绔犳枃鏈潵鑷?game.js锛屼笌鍛戒护琛岀増鍚屾簮锛?add("qb", PROLOGUE);
 add("sys", keyInput.value.trim()
-  ? `这一局上限 ${BASE_TURNS} 轮，只要君还在推进，僕就会继续等下去（最多 ${HARD_CAP} 轮）。要不要签，由君决定。`
-  : "先在右上角填入你自己的 DeepSeek API key（只存这台设备的浏览器，不会被上传），再开始对话。");
+  ? `杩欎竴灞€涓婇檺 ${BASE_TURNS} 杞紝鍙鍚涜繕鍦ㄦ帹杩涳紝鍍曞氨浼氱户缁瓑涓嬪幓锛堟渶澶?${HARD_CAP} 杞級銆傝涓嶈绛撅紝鐢卞悰鍐冲畾銆俙
+  : "鍏堝湪鍙充笂瑙掑～鍏ヤ綘鑷繁鐨?DeepSeek API key锛堝彧瀛樿繖鍙拌澶囩殑娴忚鍣紝涓嶄細琚笂浼狅級锛屽啀寮€濮嬪璇濄€?);
 $("q").addEventListener("keydown", (e) => {
   if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); ask(); }
 });
