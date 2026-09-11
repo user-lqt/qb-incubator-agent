@@ -36,15 +36,18 @@ from persona import SYSTEM_PROMPT  # 人设与行为守则（换角色只改 per
 
 
 def run_agent(question: str, max_steps: int = 10, history=None,
-              return_history: bool = False, extra_system: str = ""):
+              return_history: bool = False, extra_system: str = "",
+              override_system: str = None, use_tools: bool = True):
     """主循环：每轮把模型回复（可能带 tool_calls）追加入 messages，
     执行工具并把结果以 role=tool 追加，直到模型给出纯文本答案。
 
     history：上一轮的对话记录（不含 system），传入即可实现多轮记忆；
     return_history=True 时返回 (答案, 更新后的history)；
-    extra_system：额外的主持/规则指令（如 game.py 注入的局内状态），优先级高于人设。
+    extra_system：额外的主持/规则指令（如 game.py 注入的局内状态），优先级高于人设；
+    override_system：给定时**替换**人设（用于纯工具性调用，如状态评分器）；
+    use_tools=False：不提供工具菜单（评分器之类的调用不需要工具）。
     """
-    messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+    messages = [{"role": "system", "content": override_system if override_system else SYSTEM_PROMPT}]
     if extra_system:
         messages.append({"role": "system", "content": extra_system})
     if history:
@@ -55,12 +58,11 @@ def run_agent(question: str, max_steps: int = 10, history=None,
         return (answer, messages[1:]) if return_history else answer
 
     for step in range(max_steps):
-        resp = client.chat.completions.create(
-            model=MODEL,
-            messages=messages,
-            tools=TOOLS,
-            tool_choice="auto",
-        )
+        kwargs = {"model": MODEL, "messages": messages}
+        if use_tools:
+            kwargs["tools"] = TOOLS
+            kwargs["tool_choice"] = "auto"
+        resp = client.chat.completions.create(**kwargs)
         assistant_msg = resp.choices[0].message
         messages.append(assistant_msg)  # 保留其中的 tool_calls
 

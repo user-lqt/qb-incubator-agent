@@ -140,6 +140,31 @@ export function detectLeak(text, stage) {
   return (DISCLOSURE_FORBIDDEN[stage] || []).filter((w) => body.includes(w));
 }
 
+/** 从裸 JSON 或带标记的文本里取值（补救判定用） */
+export function parseLooseJson(text) {
+  const [, marked] = parseStateMarker(text || "");
+  if (marked) return marked;
+  const body = String(text || "");
+  const from = body.indexOf("{");
+  const to = body.lastIndexOf("}");
+  if (from < 0 || to <= from) return null;
+  try {
+    const data = JSON.parse(body.slice(from, to + 1));
+    return (data && typeof data === "object" && !Array.isArray(data)) ? data : null;
+  } catch {
+    return null;
+  }
+}
+
+// 主回答忘了附评分时的补救：单独问一次，只要 JSON
+export const SCORE_ONLY_NOTE = `你是局内状态评分器。你只输出一行 JSON，不写任何解释、不写任何其它文字。
+格式：{"contract":0,"suspicion":0,"despair":0,"resistance":0,"flags":[],"reason":"一句话"}
+四个维度是"玩家这句话"相对上一轮的整数增量，范围 -20~+25；没有变化写 0。
+判分标准：认同/打听土木细节 → contract 正数；追问它是什么/代价 → suspicion 正数；
+恐惧迷茫 → despair 正数；拒绝或坚持别的专业 → resistance 正数；贬低土木 → resistance 正数且不加 contract。
+否定句反向理解（「我不喜欢工地」不该加 contract）。flags 只能取：
+signed, refused, other_major, suspicion, meta, asked_how, pushback, leaning, reverse。`;
+
 const DECAY = { despair: -2, resistance: -2 };
 
 // ---------------------------------------------------------------- 语义评分（模型打分）

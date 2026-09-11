@@ -2,13 +2,13 @@
 // 只是把 HTTP 客户端从 openai SDK 换成 fetch，并且自带结局玩法（game.js）。
 
 // 注意：资源版本号要与 index.html 里的 V 保持一致，避免"新代码 + 旧缓存模块"混搭
-const V = "?v=10";
+const V = "?v=11";
 
 const { SYSTEM_PROMPT } = await import("./persona.js" + V);
 const { FUNCTIONS, TOOLS, TOOL_AVAILABILITY_NOTE } = await import("./tools.js" + V);
 const gameMod = await import("./game.js" + V);
 const { ENDINGS, BASE_TURNS, checkEnding, gmNote, newState, updateState,
-        applyTurnState, parseStateMarker, snapshotOf,
+        applyTurnState, parseStateMarker, snapshotOf, parseLooseJson, SCORE_ONLY_NOTE,
         disclosureStage, detectLeak, DISCLOSURE_STAGES } = gameMod;
 
 const DEFAULT_BASE = "https://api.deepseek.com";
@@ -30,10 +30,15 @@ export class QBClient {
   }
 
   async _chat(messages, tools) {
+    const body = { model: this.model, messages };
+    if (tools && tools.length) {
+      body.tools = tools;
+      body.tool_choice = "auto";
+    }
     const res = await fetch(`${this.baseUrl}/chat/completions`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${this.apiKey}` },
-      body: JSON.stringify({ model: this.model, messages, tools, tool_choice: "auto" }),
+      body: JSON.stringify(body),
     });
     if (!res.ok) {
       const detail = await res.text().catch(() => "");
@@ -41,6 +46,15 @@ export class QBClient {
     }
     const data = await res.json();
     return data.choices?.[0]?.message;
+  }
+
+  /** 补救判定：跳过人设、不带工具，只让模型为这句话吐一行 JSON */
+  async _scoreOnly(question) {
+    const msg = await this._chat([
+      { role: "system", content: SCORE_ONLY_NOTE },
+      { role: "user", content: `玩家刚才说：「${question}」\n现在只输出那一行 JSON。` },
+    ], null);
+    return parseLooseJson(msg?.content || "");
   }
 
   /** 跑一轮内核循环：模型可能连续调用多个工具。返回纯文本答案。 */
@@ -86,7 +100,16 @@ export class QBClient {
 
     const raw = await this._run(question, gmNote(this.state, ending));
     // 语义评分：模型在回答末尾附的 [[STATE:{...}]] 是本轮的权威判定
-    const [cleanRaw, modelData] = parseStateMarker(raw);
+    const [cleanRaw, parsedData] = parseStateMarker(raw);
+    let modelData = parsedData;
+    let scoreSource = modelData ? "model" : "";
+    if (!modelData) {
+      // 主回答忘了附评分 -> 补救：跳过人设单独问一次，只要 JSON
+      try {
+        const rescued = await this._scoreOnly(question);
+        if (rescued) { modelData = rescued; scoreSource = "rescue"; }
+      } catch { /* 补救失败就退回关键词机 */ }
+    }
     const selfConcluded = new RegExp(`\\[\\[ENDING:${ending || ""}\\]\\]`).test(raw);
     let answer = cleanRaw.replace(/\[\[ENDING:[A-Z_]+\]\]/g, "").trim();
 
@@ -95,7 +118,7 @@ export class QBClient {
       ending = checkEnding(this.state);
       if (ending) this.state.ending = ending;
     }
-    this.state.score_source = modelData ? "model" : "keywords";
+    this.state.score_source = scoreSource || "keywords";
 
     // 越级泄露检查：说了本级禁用词 -> 让模型用回避句式重写一次
     const stage = disclosureStage(this.state);

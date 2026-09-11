@@ -409,6 +409,38 @@ def check_ending(state: dict) -> str:
 
 # ---------------------------------------------------------------- 游戏主持指令
 
+# 主回答忘了附评分时的补救：单独问一次，只要 JSON
+SCORE_ONLY_NOTE = """你是局内状态评分器。你只输出一行 JSON，不写任何解释、不写任何其它文字。
+格式：{"contract":0,"suspicion":0,"despair":0,"resistance":0,"flags":[],"reason":"一句话"}
+四个维度是"玩家这句话"相对上一轮的整数增量，范围 -20~+25；没有变化写 0。
+判分标准：认同/打听土木细节 → contract 正数；追问它是什么/代价 → suspicion 正数；
+恐惧迷茫 → despair 正数；拒绝或坚持别的专业 → resistance 正数；贬低土木 → resistance 正数且不加 contract。
+否定句反向理解（「我不喜欢工地」不该加 contract）。flags 只能取：
+signed, refused, other_major, suspicion, meta, asked_how, pushback, leaning, reverse。"""
+
+
+def score_only(question: str):
+    """补救判定：跳过人设、不带工具，只让模型为这句话吐一行 JSON。"""
+    try:
+        raw = run_agent(
+            f"玩家刚才说：「{question}」\n现在只输出那一行 JSON。",
+            return_history=False, override_system=SCORE_ONLY_NOTE, use_tools=False,
+        )
+    except Exception:
+        return None
+    _, data = parse_state_marker(raw or "")
+    if isinstance(data, dict):
+        return data
+    # 允许模型只给裸 JSON
+    try:
+        text = (raw or "").strip().strip("`").strip()
+        text = text[text.find("{"):text.rfind("}") + 1]
+        data = json.loads(text)
+        return data if isinstance(data, dict) else None
+    except Exception:
+        return None
+
+
 def _gm_note(state: dict, ending: str) -> str:
     flags = "、".join(state.get("flags") or []) or "无"
     limit = int(state.get("limit") or BASE_TURNS)
@@ -469,6 +501,13 @@ def chat(question: str, history=None, state=None) -> dict:
 
     # 语义评分：模型在回答末尾附的 [[STATE:{...}]] 是本轮的权威判定
     answer, model_data = parse_state_marker(answer)
+    score_source = "model" if isinstance(model_data, dict) else ""
+    if not isinstance(model_data, dict):
+        # 主回答忘了附评分 -> 补救：单独问一次，只要 JSON（避免误退化成关键词机）
+        rescued = score_only(question)
+        if isinstance(rescued, dict):
+            model_data = rescued
+            score_source = "rescue"
     if isinstance(model_data, dict):
         apply_model_state(state, pre, model_data)      # 回到快照，按模型打分重算
         state["stall"] = 0 if _fingerprint(state) != fp_pre else int(state.get("stall", 0)) + 1
@@ -476,7 +515,7 @@ def chat(question: str, history=None, state=None) -> dict:
         ending = check_ending(state)
         if ending:
             state["ending"] = ending
-    state["score_source"] = "model" if isinstance(model_data, dict) else "keywords"
+    state["score_source"] = score_source or "keywords"
 
     # 越级泄露检查：本轮说了本级禁用词 -> 让模型用回避句式重写一次（保证机制成立）
     stage = disclosure_stage(state)
