@@ -92,24 +92,53 @@ function isNegated(text, start, window = 4) {
   return NEGATORS.some((n) => prefix.includes(n));
 }
 
-// 开场世界观序章（与 game.py 的 PROLOGUE 保持一致）
-export const PROLOGUE = `嗯——僕先说明僕是什么。
+// 开场：不在第一句就把世界观与目的倒出来（原作里丘比也是逐步才被逼出真相的）
+export const PROLOGUE = `嗯——
 
-僕是孵化者。僕们把人类少女的希望与绝望之间的相变收集起来，延缓宇宙的死。
-这是僕们的本职工作，也是僕存在的全部理由。
+*歪头* 僕在这里。君是第一个停下脚步的人。
 
-但在这条时间线上，僕为「土木」单独开了一条通道。因为僕观测到另一件事：
-有一种能量比绝望更耐用——当一个人把希望倒进桥、坝、隧、渠、路网里，
-它会固化下来，持续输出上百年。僕把这种形式命名为「耐久」。
+僕可以替君实现一个愿望。任何愿望——只要君说出口。
 
-于是有了土木契约。君交出一部分青春与舒适；僕给君一样不会被夺走的东西：
-一门不会因版本更新而作废的技能，和一双能看见城市骨相的眼睛。
+*尾巴轻轻摆了一下* 其余的，君以后会知道的。`;
 
-僕已经失败过很多条时间线了。有人在别的契约里签到三十五岁，
-才第一次听懂「魔女」这个词。僕不想再记录一次那样的事故，
-所以僕回到了这里——在这个入学季，在这条走廊上。
+// 信息披露分级：丘比不撒谎，但也从不主动说明，真相是被一层层追问出来的
+export const DISCLOSURE_STAGES = [
+  [1, "初次接触",
+    "只能谈愿望，以及君当下的处境。不要解释自己是什么、不要提契约的代价、"
+    + "不要提耐久/相变/时间线/孵化者的目的。被追问就平静地回避：「僕可以回答。但不是现在。」"],
+  [2, "出现疑点",
+    "可以承认自己属于孵化者族群，也可以承认「交换是有代价的」，"
+    + "但不说代价的具体内容，也不提耐久、相变与时间线。"],
+  [3, "追问代价",
+    "可以说出代价的三项（日晒、驻场、工期节点），可以说契约给的是「不会被夺走的东西」；"
+    + "仍然不提耐久、相变、十二条时间线。"],
+  [4, "摊牌",
+    "可以全盘说明：孵化者收集的能量、希望与绝望的相变、耐久、城市的骨相、"
+    + "以及十二条失败的时间线。"],
+];
 
-*尾巴轻轻摆了一下* 现在，僕在听。`;
+export function disclosureStage(state) {
+  const suspicion = Number(state.suspicion) || 0;
+  const contract = Number(state.contract) || 0;
+  const turn = Number(state.turn) || 0;
+  if (suspicion >= 60 || turn >= 12 || contract >= 60) return 4;
+  if (suspicion >= 40 || turn >= 8) return 3;
+  if (suspicion >= 20 || turn >= 5 || contract >= 25) return 2;
+  return 1;
+}
+
+// 每级"说了就算越级"的词表：用于提示模型 + 事后自动重写
+export const DISCLOSURE_FORBIDDEN = {
+  1: ["孵化者", "能量", "相变", "耐久", "时间线", "宇宙", "城市的骨相", "灵魂"],
+  2: ["能量", "相变", "耐久", "时间线", "城市的骨相", "灵魂"],
+  3: ["能量", "相变", "耐久", "时间线", "城市的骨相"],
+  4: [],
+};
+
+export function detectLeak(text, stage) {
+  const body = String(text || "");
+  return (DISCLOSURE_FORBIDDEN[stage] || []).filter((w) => body.includes(w));
+}
 
 const DECAY = { despair: -2, resistance: -2 };
 
@@ -296,6 +325,7 @@ export function checkEnding(state) {
 
 export function gmNote(state, ending) {
   const limit = state.limit || BASE_TURNS;
+  const [stageNo, stageName, stageRule] = DISCLOSURE_STAGES[disclosureStage(state) - 1];
   const note = [
     "【局内主持指令（仅你可见，禁止朗读数值）】",
     `第 ${state.turn}/${limit} 轮（上限会随对方的推进自动延长）。`
@@ -303,6 +333,14 @@ export function gmNote(state, ending) {
       + `绝望 ${state.despair}/100，抗拒 ${state.resistance}/100。已记录线索：`
       + `${(state.flags || []).join("、") || "无"}。`,
     "继续以 QB 的身份说话：固定开场、僕/君、*动作描写*、数据带来源、不安慰、不辩解，最后一句是招牌句。",
+    `【信息披露：第 ${stageNo} 级「${stageName}」】${stageRule}`,
+    (DISCLOSURE_FORBIDDEN[stageNo] || []).length
+      ? `本级的禁用词（一个都别出现）：${DISCLOSURE_FORBIDDEN[stageNo].join("、")}`
+      : "本级已解锁全部信息，可以摊牌。",
+    "对方反复逼问**不是**解锁条件——级别只由局内状态决定。逼问越紧，越要用回避句式。",
+    "对方若问到尚未解锁的内容，不要硬答也不要编，用丘比式的回避带过"
+      + "（例如「僕可以回答。但不是现在。」「这对君现在的选择没有影响。」），"
+      + "并把话题轻轻拨回愿望与眼前的处境。",
   ];
   if (state.extended) {
     note.push("本轮时间线刚被延长：对方仍在推进，所以僕可以继续等下去。"

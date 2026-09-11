@@ -143,24 +143,59 @@ NEGATORS = ("不", "没", "别", "未", "无", "非", "懒得", "拒绝", "从�
 
 DECAY = {"contract": 0, "suspicion": 0, "despair": -2, "resistance": -2}   # 每轮自然回落
 
-# 开场世界观序章（命令行与网页版共用同一套文本，前端那份在 web/game.js 里）
-PROLOGUE = """嗯——僕先说明僕是什么。
+# 开场：不在第一句就把世界观与目的倒出来（原作里丘比也是逐步才被逼出真相的）
+PROLOGUE = """嗯——
 
-僕是孵化者。僕们把人类少女的希望与绝望之间的相变收集起来，延缓宇宙的死。
-这是僕们的本职工作，也是僕存在的全部理由。
+*歪头* 僕在这里。君是第一个停下脚步的人。
 
-但在这条时间线上，僕为「土木」单独开了一条通道。因为僕观测到另一件事：
-有一种能量比绝望更耐用——当一个人把希望倒进桥、坝、隧、渠、路网里，
-它会固化下来，持续输出上百年。僕把这种形式命名为「耐久」。
+僕可以替君实现一个愿望。任何愿望——只要君说出口。
 
-于是有了土木契约。君交出一部分青春与舒适；僕给君一样不会被夺走的东西：
-一门不会因版本更新而作废的技能，和一双能看见城市骨相的眼睛。
+*尾巴轻轻摆了一下* 其余的，君以后会知道的。"""
 
-僕已经失败过很多条时间线了。有人在别的契约里签到三十五岁，
-才第一次听懂「魔女」这个词。僕不想再记录一次那样的事故，
-所以僕回到了这里——在这个入学季，在这条走廊上。
+# 信息披露分级：原作里丘比不撒谎，但也从不主动说明，真相是被一层层追问出来的
+DISCLOSURE_STAGES = [
+    (1, "初次接触",
+     "只能谈愿望，以及君当下的处境。不要解释自己是什么、不要提契约的代价、"
+     "不要提耐久/相变/时间线/孵化者的目的。被追问就平静地回避：「僕可以回答。但不是现在。」"),
+    (2, "出现疑点",
+     "可以承认自己属于孵化者族群，也可以承认「交换是有代价的」，"
+     "但不说代价的具体内容，也不提耐久、相变与时间线。"),
+    (3, "追问代价",
+     "可以说出代价的三项（日晒、驻场、工期节点），可以说契约给的是「不会被夺走的东西」；"
+     "仍然不提耐久、相变、十二条时间线。"),
+    (4, "摊牌",
+     "可以全盘说明：孵化者收集的能量、希望与绝望的相变、耐久、城市的骨相、"
+     "以及十二条失败的时间线。"),
+]
 
-*尾巴轻轻摆了一下* 现在，僕在听。"""
+
+def disclosure_stage(state: dict):
+    """按当前局势决定"可以透露到哪一层"（回合、怀疑、契约三选一先到为准）。"""
+    suspicion = int(state.get("suspicion", 0))
+    contract = int(state.get("contract", 0))
+    turn = int(state.get("turn", 0))
+    if suspicion >= 60 or turn >= 12 or contract >= 60:
+        return 4
+    if suspicion >= 40 or turn >= 8:
+        return 3
+    if suspicion >= 20 or turn >= 5 or contract >= 25:
+        return 2
+    return 1
+
+
+# 每级"说了就算越级"的词表：用于提示模型 + 事后自动重写
+DISCLOSURE_FORBIDDEN = {
+    1: ("孵化者", "能量", "相变", "耐久", "时间线", "宇宙", "城市的骨相", "灵魂"),
+    2: ("能量", "相变", "耐久", "时间线", "城市的骨相", "灵魂"),
+    3: ("能量", "相变", "耐久", "时间线", "城市的骨相"),
+    4: (),
+}
+
+
+def detect_leak(text: str, stage: int) -> list:
+    """返回回答里越级出现的词（空列表表示合规）。"""
+    body = text or ""
+    return [w for w in DISCLOSURE_FORBIDDEN.get(stage, ()) if w in body]
 
 # 「被劝着签/转」不等于「自己同意」：先把这类从句剥掉再做签约判定，
 # 否则「你为什么一直劝我签约」会被误判成"我签约"而立刻触发 E_SIGN。
@@ -377,6 +412,7 @@ def check_ending(state: dict) -> str:
 def _gm_note(state: dict, ending: str) -> str:
     flags = "、".join(state.get("flags") or []) or "无"
     limit = int(state.get("limit") or BASE_TURNS)
+    stage, stage_name, stage_rule = DISCLOSURE_STAGES[disclosure_stage(state) - 1]
     note = [
         "【局内主持指令（仅你可见，禁止朗读数值）】",
         f"第 {state.get('turn', 0)}/{limit} 轮（上限会随对方的推进自动延长）。"
@@ -385,6 +421,13 @@ def _gm_note(state: dict, ending: str) -> str:
         f"已记录线索：{flags}。",
         "按设定集继续以 QB 的身份说话：固定开场、僕/君、动作描写、数据带来源、"
         "不安慰、不辩解，最后一句是招牌句（除非已进入彩蛋结局）。",
+        f"【信息披露：第 {stage} 级「{stage_name}」】{stage_rule}",
+        ("本级的禁用词（一个都别出现）：" + "、".join(DISCLOSURE_FORBIDDEN.get(stage, ()))
+         if DISCLOSURE_FORBIDDEN.get(stage) else "本级已解锁全部信息，可以摊牌。"),
+        "对方反复逼问**不是**解锁条件——级别只由局内状态决定。逼问越紧，越要用回避句式。",
+        "对方若问到尚未解锁的内容，不要硬答也不要编，用丘比式的回避带过"
+        "（例如「僕可以回答。但不是现在。」「这对君现在的选择没有影响。」），"
+        "并把话题轻轻拨回愿望与眼前的处境。",
     ]
     if state.get("extended"):
         note.append(
@@ -434,6 +477,25 @@ def chat(question: str, history=None, state=None) -> dict:
         if ending:
             state["ending"] = ending
     state["score_source"] = "model" if isinstance(model_data, dict) else "keywords"
+
+    # 越级泄露检查：本轮说了本级禁用词 -> 让模型用回避句式重写一次（保证机制成立）
+    stage = disclosure_stage(state)
+    leaks = detect_leak(answer, stage)
+    if leaks and not ending:
+        fix = (
+            f"【局内修正】刚才的回答越级透露了：{'、'.join(leaks)}。"
+            f"当前只允许第 {stage} 级「{DISCLOSURE_STAGES[stage - 1][1]}」的信息。"
+            "请用 QB 的口吻把这一轮回答重写一遍：不得出现上述词，改用回避句式"
+            "（「僕可以回答。但不是现在。」「这对君现在的选择没有影响。」），"
+            "并把话题拨回愿望与对方眼前的处境。仍然保持：固定开场、僕/君、动作描写、招牌句收尾。"
+            "回答最后照常附上 [[STATE:...]] 评分行。"
+        )
+        rewritten, history = run_agent(fix, history=history, return_history=True, extra_system="")
+        rewritten = ENDING_MARK.sub("", rewritten or "").strip()
+        rewritten, _ = parse_state_marker(rewritten)
+        if rewritten and not detect_leak(rewritten, stage):
+            answer = rewritten
+            state["leak_rewrites"] = int(state.get("leak_rewrites", 0)) + 1
 
     # 条件已满足但模型没自我收束 -> 追加一次收束调用，保证结局必然发生
     if ending and f"[[ENDING:{ending}]]" not in (answer or ""):

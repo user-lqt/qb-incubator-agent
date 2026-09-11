@@ -44,3 +44,6 @@ jobs:
 
       - name: 六结局触发测试
         run: python tests/test_endings.py
+
+      - name: 分级披露测试
+        run: python tests/test_disclosure.py

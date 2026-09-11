@@ -1,6 +1,7 @@
 // 六结局触发测试（game.py / tests/test_endings.py 的 JS 版，不调用模型）
-import { BASE_TURNS, EXTEND_STEP, HARD_CAP, checkEnding, describeDelta, newState, updateState,
-         parseStateMarker, applyModelState, snapshotOf, applyTurnState } from "../game.js";
+import { BASE_TURNS, EXTEND_STEP, HARD_CAP, PROLOGUE, checkEnding, describeDelta, newState, updateState,
+         parseStateMarker, applyModelState, snapshotOf, applyTurnState,
+         disclosureStage, detectLeak } from "../game.js";
 
 const CASES = {
   E_SIGN: ["我签！我愿意转专业去土木"],
@@ -154,6 +155,28 @@ applyTurnState(st4, snap4, { contract: 10, suspicion: 0, despair: 0, resistance:
 if (st4.contract !== 10 || st4.stall !== 0) {
   console.log(`FAIL applyTurnState 未正确应用：${st4.contract} stall=${st4.stall}`); failed += 1;
 }
+
+// ---- 分级披露：级别判定、禁用词、越级检测 ----
+if (!PROLOGUE || PROLOGUE.length > 120
+    || ["孵化者", "耐久", "相变", "时间线", "能量"].some((w) => PROLOGUE.includes(w))) {
+  console.log("FAIL 序章不应剧透世界观或过长"); failed += 1;
+}
+const STAGE_CASES = [
+  [{ suspicion: 0, turn: 1, contract: 0 }, 1],
+  [{ suspicion: 0, turn: 5, contract: 0 }, 2],
+  [{ suspicion: 25, turn: 3, contract: 0 }, 2],
+  [{ suspicion: 45, turn: 9, contract: 0 }, 3],
+  [{ suspicion: 70, turn: 13, contract: 0 }, 4],
+];
+for (const [patch, expect] of STAGE_CASES) {
+  const got = disclosureStage({ ...newState(), ...patch });
+  if (got !== expect) { console.log(`FAIL 披露级别 ${JSON.stringify(patch)} 期望 ${expect} 实际 ${got}`); failed += 1; }
+}
+if (detectLeak("僕是孵化者。", 1).length !== 1) { console.log("FAIL 第 1 级应禁用'孵化者'"); failed += 1; }
+if (detectLeak("僕是孵化者。", 2).length !== 0) { console.log("FAIL 第 2 级应允许'孵化者'"); failed += 1; }
+if (detectLeak("希望到绝望的相变。", 3).length === 0) { console.log("FAIL 第 3 级应禁用'相变'"); failed += 1; }
+if (detectLeak("代价是日晒、驻场、工期节点。", 3).length !== 0) { console.log("FAIL 第 3 级应允许代价三项"); failed += 1; }
+if (detectLeak("孵化者收集能量，形成耐久。", 4).length !== 0) { console.log("FAIL 第 4 级应无限制"); failed += 1; }
 
 console.log(failed ? `\n${failed} 条不通过` : `\n全部 ${Object.keys(CASES).length} 条结局判定 + 动态轮数断言通过（JS 版）`);
 process.exit(failed ? 1 : 0);

@@ -8,7 +8,8 @@ const { SYSTEM_PROMPT } = await import("./persona.js" + V);
 const { FUNCTIONS, TOOLS, TOOL_AVAILABILITY_NOTE } = await import("./tools.js" + V);
 const gameMod = await import("./game.js" + V);
 const { ENDINGS, BASE_TURNS, checkEnding, gmNote, newState, updateState,
-        applyTurnState, parseStateMarker, snapshotOf } = gameMod;
+        applyTurnState, parseStateMarker, snapshotOf,
+        disclosureStage, detectLeak, DISCLOSURE_STAGES } = gameMod;
 
 const DEFAULT_BASE = "https://api.deepseek.com";
 const DEFAULT_MODEL = "deepseek-chat";
@@ -95,6 +96,25 @@ export class QBClient {
       if (ending) this.state.ending = ending;
     }
     this.state.score_source = modelData ? "model" : "keywords";
+
+    // 越级泄露检查：说了本级禁用词 -> 让模型用回避句式重写一次
+    const stage = disclosureStage(this.state);
+    const leaks = detectLeak(answer, stage);
+    if (leaks.length && !ending) {
+      const fix = `【局内修正】刚才的回答越级透露了：${leaks.join("、")}。`
+        + `当前只允许第 ${stage} 级「${DISCLOSURE_STAGES[stage - 1][1]}」的信息。`
+        + "请用 QB 的口吻把这一轮回答重写一遍：不得出现上述词，改用回避句式"
+        + "（「僕可以回答。但不是现在。」「这对君现在的选择没有影响。」），"
+        + "并把话题拨回愿望与对方眼前的处境。仍然保持：固定开场、僕/君、动作描写、招牌句收尾。"
+        + "回答最后照常附上 [[STATE:...]] 评分行。";
+      const rewrittenRaw = await this._run(fix, "");
+      const [rewritten] = parseStateMarker(
+        rewrittenRaw.replace(/\[\[ENDING:[A-Z_]+\]\]/g, "").trim());
+      if (rewritten && detectLeak(rewritten, stage).length === 0) {
+        answer = rewritten;
+        this.state.leak_rewrites = (this.state.leak_rewrites || 0) + 1;
+      }
+    }
 
     // 内核里追加的 messages 不进 history（只保留 user/assistant 文本，控制上下文长度）
     this.history.push({ role: "user", content: question });
