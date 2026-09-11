@@ -83,7 +83,8 @@ web/          # 纯前端版（BYOK，GitHub Pages 托管）
   └─ tests/      # 前端回归测试（node，不调模型）
 docs/         # 世界观圣经 + 结局卡片示例图
 tests/        # 结局、披露、后日谈测试（不调模型、不花钱）
-tools/        # 人设同步、头像与背景图、favicon 生成脚本
+tools/        # 人设同步、头像与背景图、favicon 生成脚本、状态机诊断脚本
+              #   RUN_SMOKE=1 python tools/diag_state.py  # 逐轮打印四维变化与披露级别（真调模型）
 ```
 
 换人设：改 `persona.py` 的 `SYSTEM_PROMPT`，再 `python tools/sync_persona.py` 同步到前端（CI 会校验）。

@@ -1,16 +1,22 @@
-"""诊断：连续多轮"无变化"到底出在哪一环。
+"""诊断脚本：连续多轮"状态无变化"到底出在哪一环。
 
-逐轮打印：原始回答尾部是否带 [[STATE:]]、解析结果、判定来源、四维变化、停滞计数。
-用法：RUN_SMOKE=1 python _diag_state.py
+逐轮打印：原始回答尾部是否带 [[STATE:]] 标记、解析结果、四维变化、停滞计数与披露级别。
+用法（在仓库根目录）：RUN_SMOKE=1 python tools/diag_state.py
+
+注意：会真调模型、消耗 token，所以默认不跑；需要 DEEPSEEK_API_KEY。
 """
 import json
 import os
 import re
 import sys
+from pathlib import Path
 
-from agent import run_agent
-from game import (BASE_TURNS, ENDING_MARK, _gm_note, check_ending, disclosure_stage,
-                  new_state, parse_state_marker, update_state)
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from agent import run_agent  # noqa: E402
+from game import (BASE_TURNS, ENDING_MARK, _gm_note, apply_model_state,  # noqa: E402
+                  check_ending, disclosure_stage, new_state,
+                  parse_state_marker, update_state)
 
 if not os.getenv("RUN_SMOKE"):
     print("跳过（设置 RUN_SMOKE=1 才跑真模型）")
@@ -41,7 +47,6 @@ for i, q in enumerate(inputs, 1):
         pre = {k: before[k] for k in before}
         pre["reform"] = state.get("reform", 0)
         pre["flags"] = list(state.get("flags") or [])
-        from game import apply_model_state
         apply_model_state(state, pre, data)
         after = {k: state[k] for k in before}
     else:
