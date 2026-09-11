@@ -13,3 +13,9 @@ venv/
 build/
 dist/
 *.spec
+
+# 临时文件：提交信息、抓取缓存等，一律不入库
+_msg*.txt
+_m*.txt
+_raw_*.md
+_repo.html
