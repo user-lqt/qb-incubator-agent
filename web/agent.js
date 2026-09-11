@@ -2,7 +2,7 @@
 // 只是把 HTTP 客户端从 openai SDK 换成 fetch，并且自带结局玩法（game.js）。
 
 // 注意：资源版本号要与 index.html 里的 V 保持一致，避免"新代码 + 旧缓存模块"混搭
-const V = "?v=16";
+const V = "?v=17";
 const SESSION_SCHEMA = 3;      // 存档结构版本：改结构时 +1，旧存档会被安全丢弃
 
 const { SYSTEM_PROMPT } = await import("./persona.js" + V);
@@ -243,6 +243,7 @@ export class QBClient {
       choices: texts,
       choiceDirs: dirs,
       choicesRich: rich,
+      epilogue: ending ? gameMod.epilogue(ending) : "",
       tension: gameMod.tension(this.state),
       ending_title: ending ? ENDINGS[ending].title : "",
       ending_tagline: ending ? ENDINGS[ending].tagline : "",

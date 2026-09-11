@@ -118,6 +118,8 @@ if __name__ == "__main__":
                 print("=" * 58)
                 print(f"【结局：{result['ending_title']}】{result['ending_tagline']}")
                 print("=" * 58)
+                if result.get("epilogue"):
+                    print("\n" + result["epilogue"] + "\n")
                 again = input("再来一条时间线？(y/n) > ").strip().lower()
                 if again == "y":
                     state, history, pending = game.new_state(), None, []

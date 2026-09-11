@@ -1,7 +1,8 @@
 // 六结局触发测试（game.py / tests/test_endings.py 的 JS 版，不调用模型）
 import { BASE_TURNS, DELTA_LIMIT, EXTEND_STEP, HARD_CAP, PROLOGUE, RESOLVE_AT, checkEnding, describeDelta, newState, updateState,
          parseStateMarker, applyModelState, snapshotOf, applyTurnState, tension, gmNote, toChoicePayload,
-         disclosureStage, detectLeak, parseChoices, fallbackChoices, sanitizeChoices } from "../game.js";
+         disclosureStage, detectLeak, parseChoices, fallbackChoices, sanitizeChoices,
+         ENDINGS, EPILOGUES, epilogue } from "../game.js";
 import { QBClient } from "../agent.js";
 
 const CASES = {
@@ -181,6 +182,17 @@ if (detectLeak("代价是日晒、驻场、工期节点。", 3).length !== 0) { 
 if (detectLeak("孵化者收集能量，形成耐久。", 4).length !== 0) { console.log("FAIL 第 4 级应无限制"); failed += 1; }
 if (!gmNote(newState(), "").includes("真话、半真话与掩饰")) {
   console.log("FAIL 掩饰规则未注入主持指令"); failed += 1;
+}
+
+// 后日谈：覆盖全部结局且足够长
+for (const eid of Object.keys(ENDINGS)) {
+  const body = (EPILOGUES[eid] || "").split("\n").slice(1).join("\n");
+  if (!body || body.length < 180) {
+    console.log(`FAIL ${eid} 后日谈过短（${body.length} 字）`); failed += 1;
+  }
+}
+if (Object.keys(EPILOGUES).length !== Object.keys(ENDINGS).length) {
+  console.log("FAIL 后日谈未覆盖全部结局"); failed += 1;
 }
 
 // ---- 对话选项：对象格式解析 + 倾向 + 兜底 ----

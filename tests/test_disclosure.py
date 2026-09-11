@@ -49,7 +49,16 @@ check("第 3 级禁用'相变'", detect_leak("希望到绝望的相变。", 3) =
 check("第 3 级可以说代价三项", detect_leak("代价是日晒、驻场、工期节点。", 3) == [])
 check("第 4 级不再限制", detect_leak("孵化者收集能量，形成耐久。", 4) == [])
 check("第 1 级禁用词表非空", len(DISCLOSURE_FORBIDDEN[1]) >= 5)
-check("掩饰规则已注入主持指令", "真话、半真话与掩饰" in _gm_note(new_state(), ""))
+check("掩饰规则已注入主持指令", "真话、半真半假与掩饰" in _gm_note(new_state(), "")
+      or "真话、半真话与掩饰" in _gm_note(new_state(), ""))
+
+# 后日谈：六条结局都要有，且足够长（本轮要求"更长更黑暗"）
+from game import ENDINGS, EPILOGUES, epilogue  # noqa: E402
+check("后日谈覆盖全部结局", set(EPILOGUES) == set(ENDINGS))
+for eid in ENDINGS:
+    body = epilogue(eid).split("\n", 1)[-1]
+    check(f"{eid} 后日谈 >= 180 字（实际 {len(body)}）", len(body) >= 180)
+check("后日谈以结局名开头", epilogue("E_SIGN").startswith("【后日谈"))
 
 # 对话选项：标记解析 + 兜底
 clean, chs = parse_choices('僕这样说。[[STATE:{"contract":1}]]\n'

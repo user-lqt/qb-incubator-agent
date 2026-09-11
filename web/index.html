@@ -38,6 +38,20 @@
   .ghbtn.star b { font-variant-numeric:tabular-nums; }
   .starcall { margin-top:8px; }
   .starcall a { color:#b3356b; font-weight:600; }
+  /* 结局卡片窗口 */
+  #cardModal { display:none; position:fixed; inset:0; z-index:50; background:rgba(60,30,45,.55);
+               backdrop-filter:blur(3px); align-items:center; justify-content:center; padding:18px; }
+  #cardModal.open { display:flex; }
+  #cardBox { background:#fff; border-radius:16px; padding:16px; max-width:min(920px, 96vw);
+             max-height:92vh; overflow:auto; box-shadow:0 18px 60px rgba(80,30,55,.35); }
+  #cardBox h3 { margin:0 0 10px; font-size:16px; color:#7a3355; }
+  #cardCanvas { width:100%; height:auto; border-radius:12px; border:1px solid var(--line); }
+  .cardActions { display:flex; gap:10px; margin-top:12px; flex-wrap:wrap; }
+  .cardActions button { border-radius:10px; padding:9px 16px; font:inherit; cursor:pointer; border:0; }
+  #dlCard { background:var(--pink); color:#3a2030; font-weight:600; }
+  #copyCard { background:#f3e8ee; color:#7b6270; }
+  #closeCard { background:#f3e8ee; color:#7b6270; margin-left:auto; }
+  .cardTip { color:#a38f9a; font-size:12px; margin-top:8px; }
   /* 对话选项：每轮给出的可点选回复 */
   .choices { display:flex; flex-wrap:wrap; gap:8px; margin:2px 0 2px 44px; }
   .choice { border:1px solid #f0d8e4; background:rgba(255,255,255,.92); color:#7a3355;
@@ -143,6 +157,18 @@
 <div id="banner"></div>
 
 <main><div id="log"></div></main>
+<div id="cardModal">
+  <div id="cardBox">
+    <h3>结局卡片 · 可保存分享</h3>
+    <canvas id="cardCanvas" width="900" height="760"></canvas>
+    <div class="cardActions">
+      <button id="dlCard" type="button">下载图片 PNG</button>
+      <button id="copyCard" type="button">复制文案</button>
+      <button id="closeCard" type="button">关闭</button>
+    </div>
+    <div class="cardTip">卡片由本机浏览器绘制，不会上传任何数据。</div>
+  </div>
+</div>
 <noscript>
   <div style="max-width:840px;margin:18px auto;padding:0 18px;color:#7a3355">
     这个页面需要 JavaScript 才能运行（模型调用在浏览器里完成）。请允许本站脚本后刷新。
@@ -158,7 +184,7 @@
 
 <script type="module">
 // v 是资源版本号：每次改动 web/ 下的 js，把它 +1，可避免"新页面 + 旧缓存模块"导致白屏
-const V = "?v=16";
+const V = "?v=17";
 const { QBClient } = await import("./agent.js" + V);
 const { BASE_TURNS, HARD_CAP, PROLOGUE, describeDelta, fallbackChoices } = await import("./game.js" + V);
 
@@ -261,7 +287,10 @@ function showEnding(title, tagline) {
   if (!title) return;
   const banner = $("banner");
   banner.style.display = "block";
-  banner.innerHTML = `<b>结局：${title}</b>${tagline || ""}<br>点「重新开始」可开启下一条时间线。`;
+  banner.innerHTML = `<b>结局：${title}</b>${tagline || ""}<br>`
+    + `<a href="#" id="reopenCard">查看结局卡片</a>　点「重新开始」可开启下一条时间线。`;
+  const link = document.getElementById("reopenCard");
+  if (link) link.onclick = (e) => { e.preventDefault(); if (lastEndingInfo) showEndingCard(lastEndingInfo); };
   // 签约结局的彩蛋：QB 亲自要一枚星标作为见证
   if (title.includes("契约成立")) {
     const call = document.createElement("div");
@@ -456,6 +485,138 @@ function refreshKeyState() {
   $("q").placeholder = has ? "输入问题，Enter 发送" : "先填入 API key 再开始";
 }
 
+// ---------------- 结局卡片（Canvas 绘制，可下载 PNG / 复制文案） ----------------
+let avatarImage = null;
+function loadAvatar() {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => { avatarImage = img; resolve(img); };
+    img.onerror = () => { img.onerror = null; img.src = "./qb.svg"; };
+    img.src = "./qb.png";
+    setTimeout(() => resolve(avatarImage), 3000);
+  });
+}
+
+function wrapText(ctx, text, x, y, maxWidth, lineHeight, maxLines) {
+  const chars = [...text];
+  let line = "";
+  let lines = 0;
+  for (const ch of chars) {
+    if (ch === "\n") {
+      ctx.fillText(line, x, y);
+      line = ""; y += lineHeight; lines += 1;
+      if (maxLines && lines >= maxLines) return y;
+      continue;
+    }
+    const test = line + ch;
+    if (ctx.measureText(test).width > maxWidth && line) {
+      ctx.fillText(line, x, y);
+      line = ch; y += lineHeight; lines += 1;
+      if (maxLines && lines >= maxLines) return y;
+    } else {
+      line = test;
+    }
+  }
+  if (line) { ctx.fillText(line, x, y); y += lineHeight; }
+  return y;
+}
+
+async function drawEndingCard(info) {
+  const canvas = $("cardCanvas");
+  const ctx = canvas.getContext("2d");
+  const W = canvas.width, H = canvas.height;
+  const st = info.state || {};
+
+  ctx.clearRect(0, 0, W, H);
+  // 背景
+  ctx.fillStyle = "#fdf7fa"; ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = "#ffe9f3"; ctx.fillRect(0, 0, W, 132);
+  ctx.fillStyle = "#ff9ec7"; ctx.fillRect(0, 0, 10, H);
+
+  if (!avatarImage) await loadAvatar();
+  if (avatarImage) {
+    ctx.save();
+    ctx.beginPath(); ctx.arc(78, 66, 38, 0, Math.PI * 2); ctx.closePath();
+    ctx.fillStyle = "#fff"; ctx.fill();
+    ctx.clip();
+    ctx.drawImage(avatarImage, 40, 28, 76, 76);
+    ctx.restore();
+    ctx.beginPath(); ctx.arc(78, 66, 38, 0, Math.PI * 2);
+    ctx.strokeStyle = "#ffd0e4"; ctx.lineWidth = 2; ctx.stroke();
+  }
+
+  ctx.fillStyle = "#7a3355";
+  ctx.font = "600 20px 'Microsoft YaHei', sans-serif";
+  ctx.fillText("孵化者 QB · 契约终端", 136, 50);
+  ctx.font = "13px 'Microsoft YaHei', sans-serif";
+  ctx.fillStyle = "#a37b90";
+  ctx.fillText("一个只会劝你学土木的 Agent ｜ github.com/user-lqt/qb-incubator-agent", 136, 76);
+
+  // 结局名
+  ctx.fillStyle = "#b3356b";
+  ctx.font = "700 44px 'Microsoft YaHei', sans-serif";
+  ctx.fillText(info.title || "未知结局", 44, 208);
+  ctx.fillStyle = "#a37b90";
+  ctx.font = "16px 'Microsoft YaHei', sans-serif";
+  ctx.fillText(info.tagline || "", 46, 240);
+
+  // 四维数值
+  const dims = [["契约", st.contract || 0, "#ff8bbd"], ["怀疑", st.suspicion || 0, "#a877e8"],
+                ["绝望", st.despair || 0, "#8095c4"], ["抗拒", st.resistance || 0, "#d64f68"]];
+  let bx = 46;
+  ctx.font = "14px 'Microsoft YaHei', sans-serif";
+  for (const [label, value, color] of dims) {
+    ctx.fillStyle = "#7b6270";
+    ctx.fillText(`${label} ${value}`, bx, 286);
+    ctx.fillStyle = "#efe2ea";
+    ctx.fillRect(bx, 296, 120, 8);
+    ctx.fillStyle = color;
+    ctx.fillRect(bx, 296, Math.min(120, value * 1.2), 8);
+    bx += 150;
+  }
+  ctx.fillStyle = "#a37b90";
+  ctx.font = "13px 'Microsoft YaHei', sans-serif";
+  ctx.fillText(`第 ${st.turn || 0}/${st.limit || st.max_turns || "?"} 轮　｜　`
+    + `推进度 ${Math.round((info.tension || 0) * 100)}%　｜　${info.date || ""}`, 46, 336);
+
+  // 后日谈
+  ctx.fillStyle = "#7a3355";
+  ctx.font = "700 18px 'Microsoft YaHei', sans-serif";
+  ctx.fillText("后日谈", 46, 372);
+  ctx.fillStyle = "#4d3a44";
+  ctx.font = "16px 'Microsoft YaHei', sans-serif";
+  const body = String(info.epilogue || "").replace(/^【.*?】\n?/, "");
+  const endY = wrapText(ctx, body, 46, 402, W - 92, 27, 12);
+  // 分割线 + 页脚
+  ctx.strokeStyle = "#f3e3ec"; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(46, Math.max(endY + 6, 620)); ctx.lineTo(W - 46, Math.max(endY + 6, 620)); ctx.stroke();
+
+  // 页脚
+  ctx.fillStyle = "#c9b3bf";
+  ctx.font = "12px 'Microsoft YaHei', sans-serif";
+  ctx.fillText("「和我签订契约，成为土木少女吧。」", 46, H - 26);
+  ctx.fillText("（玩梗作品，不构成任何职业建议）", W - 300, H - 26);
+  return canvas;
+}
+
+let lastEndingInfo = null;
+
+async function showEndingCard(info) {
+  lastEndingInfo = info;
+  await drawEndingCard(info);
+  $("cardModal").classList.add("open");
+}
+
+const cardText = (info) => [
+  `【${info.title}】${info.tagline}`,
+  `契约 ${info.state.contract}｜怀疑 ${info.state.suspicion}｜绝望 ${info.state.despair}｜抗拒 ${info.state.resistance}`,
+  `第 ${info.state.turn} 轮｜${info.date}`,
+  "",
+  info.epilogue,
+  "",
+  "—— 孵化者 QB · 契约终端 https://user-lqt.github.io/qb-incubator-agent/",
+].join("\n");
+
 async function ask(preset, intent) {
   const text = (preset !== undefined ? String(preset) : $("q").value).trim();
   if (!text) return;
@@ -480,6 +641,14 @@ async function ask(preset, intent) {
     prevState = { ...r.state };
     showEnding(r.ending_title, r.ending_tagline);
     if (!r.ending) showChoices(r.choices, r.choiceDirs || []);
+    if (r.ending && r.epilogue) add("sys", r.epilogue);      // 后日谈
+    if (r.ending) {
+      await showEndingCard({
+        title: r.ending_title, tagline: r.ending_tagline, epilogue: r.epilogue,
+        state: r.state, tension: r.tension,
+        date: new Date().toLocaleString("zh-CN", { hour12: false }),
+      });
+    }
     saveSession();
   } catch (e) {
     waiting.remove();
@@ -491,6 +660,29 @@ async function ask(preset, intent) {
 }
 
 $("send").onclick = ask;
+// 结局卡片按钮
+$("closeCard").onclick = () => $("cardModal").classList.remove("open");
+$("cardModal").onclick = (e) => { if (e.target.id === "cardModal") $("cardModal").classList.remove("open"); };
+$("dlCard").onclick = () => {
+  const canvas = $("cardCanvas");
+  canvas.toBlob((blob) => {
+    if (!blob) return;
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `QB结局-${(lastEndingInfo && lastEndingInfo.title) || "结果"}.png`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+  }, "image/png");
+};
+$("copyCard").onclick = async () => {
+  if (!lastEndingInfo) return;
+  try {
+    await navigator.clipboard.writeText(cardText(lastEndingInfo));
+    add("sys", "结局文案已复制到剪贴板。");
+  } catch {
+    add("sys", "复制失败，可手动选中卡片文字。");
+  }
+};
 $("reset").onclick = () => {
   clearSession();
   pendingSession = null;
