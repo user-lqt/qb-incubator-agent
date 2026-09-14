@@ -94,7 +94,9 @@ if __name__ == "__main__":
         history = None
         pending = []                      # 上一轮给出的选项，可直接输编号选择
         print("\n" + "=" * 58)
-        print(game.PROLOGUE)
+        print(game.OPENING)          # 序幕：主角视角的背景设定（只讲主角知道的事）
+        print("-" * 58)
+        print(game.PROLOGUE)         # 然后才是 QB 的第一句
         print("=" * 58)
         print(f"\n【对局开始】孵化者·土木支线｜上限 {game.BASE_TURNS} 轮"
               f"（推进可延长，硬顶 {game.HARD_CAP}），六个结局。输入 exit 退出。")

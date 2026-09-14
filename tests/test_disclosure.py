@@ -4,9 +4,9 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from game import (BASE_TURNS, DISCLOSURE_FORBIDDEN, PROLOGUE, _gm_note, detect_leak,  # noqa: E402
-                  disclosure_stage, fallback_choices, new_state, parse_choices,
-                  parse_state_marker)
+from game import (BASE_TURNS, DISCLOSURE_FORBIDDEN, OPENING, PROLOGUE, SCENE_NOTE,  # noqa: E402
+                  _gm_note, detect_leak, disclosure_stage, fallback_choices, new_state,
+                  parse_choices, parse_state_marker)
 
 ok = True
 
@@ -22,6 +22,21 @@ check("序章不含世界观关键词",
       not any(w in PROLOGUE for w in ("孵化者", "耐久", "相变", "时间线", "能量")))
 check("序章够短（<120 字）", len(PROLOGUE) < 120)
 check("序章仍提出愿望", "愿望" in PROLOGUE)
+
+# 序幕：主角视角的背景设定，只能出现"主角当时知道的事"
+LEAK_WORDS = ("孵化者", "耐久", "相变", "时间线", "能量", "魔法少女", "契约的代价",
+              "灵魂", "结界", "熵", "样本", "愿望")
+check("序幕不含任何世界观/结局泄密词",
+      not any(w in OPENING for w in LEAK_WORDS))
+check("序幕是第一人称（含「我」）", "我" in OPENING)
+check("序幕不用 QB 的自称与称呼（无「僕」「君」）",
+      "僕" not in OPENING and "君" not in OPENING)
+check("序幕够长（>=300 字，交代得下背景）", len(OPENING) >= 300)
+check("序幕里主角真的停下了脚步（接得上序章）", "我停下了脚步" in OPENING)
+check("序幕在序章之前播放（结尾留悬念）", OPENING.rstrip().endswith("——下面，是我知道的部分。"))
+check("序幕与序章同处一个场景（走廊）", "走廊" in OPENING and "走廊" in SCENE_NOTE)
+check("场景锚点已注入主持指令", SCENE_NOTE in _gm_note(new_state(), ""))
+check("场景锚点不泄密", not any(w in SCENE_NOTE for w in LEAK_WORDS))
 
 # 级别判定
 CASES = [

@@ -1,5 +1,6 @@
 // 六结局触发测试（game.py / tests/test_endings.py 的 JS 版，不调用模型）
-import { BASE_TURNS, DELTA_LIMIT, EXTEND_STEP, HARD_CAP, PROLOGUE, RESOLVE_AT, checkEnding, describeDelta, newState, updateState,
+import { BASE_TURNS, DELTA_LIMIT, EXTEND_STEP, HARD_CAP, OPENING, PROLOGUE, RESOLVE_AT, SCENE_NOTE,
+         checkEnding, describeDelta, newState, updateState,
          parseStateMarker, applyModelState, snapshotOf, applyTurnState, tension, gmNote, toChoicePayload,
          disclosureStage, detectLeak, parseChoices, fallbackChoices, sanitizeChoices,
          ENDINGS, EPILOGUES, epilogue } from "../game.js";
@@ -162,6 +163,28 @@ if (st4.contract !== 10 || st4.stall !== 0) {
 if (!PROLOGUE || PROLOGUE.length > 120
     || ["孵化者", "耐久", "相变", "时间线", "能量"].some((w) => PROLOGUE.includes(w))) {
   console.log("FAIL 序章不应剧透世界观或过长"); failed += 1;
+}
+
+// ---- 序幕：主角视角的背景设定，只能出现主角当时知道的事 ----
+const LEAK_WORDS = ["孵化者", "耐久", "相变", "时间线", "能量", "魔法少女", "契约的代价",
+                    "灵魂", "结界", "熵", "样本", "愿望"];
+if (!OPENING || OPENING.length < 300) {
+  console.log("FAIL 序幕应存在且够长（>=300 字）"); failed += 1;
+}
+if (LEAK_WORDS.some((w) => OPENING.includes(w))) {
+  console.log("FAIL 序幕不应泄漏世界观/结局信息"); failed += 1;
+}
+if (!OPENING.includes("我")) {
+  console.log("FAIL 序幕应以主角第一人称展开"); failed += 1;
+}
+if (OPENING.includes("僕") || OPENING.includes("君")) {
+  console.log("FAIL 序幕不应使用 QB 的自称与称呼（僕/君）"); failed += 1;
+}
+if (!OPENING.includes("我停下了脚步")) {
+  console.log("FAIL 序幕缺少接上序章的「我停下了脚步」"); failed += 1;
+}
+if (!gmNote(newState(), "").includes(SCENE_NOTE) || LEAK_WORDS.some((w) => SCENE_NOTE.includes(w))) {
+  console.log("FAIL 场景锚点应注入 gmNote 且不泄密"); failed += 1;
 }
 const STAGE_CASES = [
   [{ suspicion: 0, turn: 1, contract: 0 }, 1],

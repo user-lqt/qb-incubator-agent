@@ -104,6 +104,13 @@
        box-shadow:0 2px 10px rgba(180,140,160,.10); }
   .me { background:rgba(255,255,255,.94); border:1px solid var(--line); }
   .qb { background:rgba(255,158,199,.93); color:#3a2030; }
+  /* from-story：序幕/旁白，主角视角，不带头像，和 QB 的粉色气泡区分开 */
+  .msg.from-story { justify-content:center; }
+  .msg.from-story > .b { max-width:100%; }
+  .story { width:100%; color:#5f4b57; font-size:13.5px; line-height:1.85; text-align:left;
+           background:rgba(255,255,255,.66); border:1px solid var(--line);
+           border-left:3px solid rgba(255,158,199,.9); border-radius:12px;
+           padding:14px 18px; box-shadow:none; }
   .sys { color:#8c7482; font-size:13px; text-align:center;
          background:rgba(255,255,255,.72); border-radius:10px; padding:4px 12px; }
   .sys code { background:#f6ecf1; border-radius:4px; padding:1px 5px; }
@@ -184,9 +191,9 @@
 
 <script type="module">
 // v 是资源版本号：每次改动 web/ 下的 js，把它 +1，可避免"新页面 + 旧缓存模块"导致白屏
-const V = "?v=18";
+const V = "?v=19";
 const { QBClient } = await import("./agent.js" + V);
-const { BASE_TURNS, HARD_CAP, PROLOGUE, describeDelta, fallbackChoices } = await import("./game.js" + V);
+const { BASE_TURNS, HARD_CAP, OPENING, PROLOGUE, describeDelta, fallbackChoices } = await import("./game.js" + V);
 
 const $ = (id) => document.getElementById(id);
 const log = $("log"), keyInput = $("key"), modelSelect = $("model");
@@ -237,6 +244,12 @@ function add(cls, text) {
   const scroller = document.querySelector("main");   // 消息区自己滚动（页面本身不再滚动）
   scroller.scrollTop = scroller.scrollHeight;
   return wrap;
+}
+
+/** 序幕比较长：开场时从顶部读起，而不是直接看到底部 */
+function scrollLogTop() {
+  const scroller = document.querySelector("main");
+  if (scroller) scroller.scrollTop = 0;
 }
 
 function metric(key, label, value, changed, prevValue) {
@@ -365,17 +378,20 @@ function logToData() {
     }
     if (!node.classList || !node.classList.contains("msg")) continue;
     const kind = node.classList.contains("from-me") ? "me"
-      : node.classList.contains("from-qb") ? "qb" : "sys";
+      : node.classList.contains("from-qb") ? "qb"
+      : node.classList.contains("from-story") ? "story" : "sys";
     const bubble = node.querySelector(".b");
     if (bubble) items.push({ kind, text: bubble.textContent });
   }
   return items.slice(-LOG_LIMIT);
 }
 
-/** 用存档数据重建界面 */
+/** 用存档数据重建界面；旧存档（还没有序幕）自动在最前面补上序幕 */
 function renderFromData(items) {
   log.innerHTML = "";
-  for (const it of items || []) {
+  const list = items || [];
+  if (!list.some((it) => it.kind === "story")) add("story", OPENING);
+  for (const it of list) {
     if (it.kind === "choices") { showChoices(it.buttons || []); continue; }
     if (it.text) add(it.kind, it.text);
   }
@@ -694,11 +710,13 @@ $("reset").onclick = () => {
   lastState = null;
   prevState = emptyState();
   renderBars(emptyState());
-  add("sys", "记录已清空。新的一条时间线开始——或者，是第十三条。");
+  add("story", OPENING);
   add("qb", PROLOGUE);
+  add("sys", "记录已清空。新的一条时间线开始——或者，是第十三条。");
   if (!keyInput.value.trim()) {
     add("sys", "先在右上角填入你自己的 DeepSeek API key（只存这台设备的浏览器），再开始对话。");
   }
+  scrollLogTop();     // 新的一局：从序幕开头读起
 };
 
 $("save").onclick = () => {
@@ -727,14 +745,16 @@ client = buildClient();
 refreshKeyState();
 wireAvatar($("avatar"));
 loadStars();                // 取一次星标数（有缓存，失败就静默降级）
-// 有存档就恢复上次对话，没有才播放序章
+// 有存档就恢复上次对话，没有才播放序幕与序章
 const restored = restoreSession();
 if (!restored) {
   renderBars(emptyState());
+  add("story", OPENING);
   add("qb", PROLOGUE);
   add("sys", keyInput.value.trim()
     ? `这一局上限 ${BASE_TURNS} 轮，只要君还在推进，僕就会继续等下去（最多 ${HARD_CAP} 轮）。要不要签，由君决定。`
     : "先在右上角填入你自己的 DeepSeek API key（只存这台设备的浏览器，不会被上传），再开始对话。");
+  scrollLogTop();     // 序幕较长：从开头读起，而不是直接停在底部
 }
 // 版本标签：一眼看出当前跑的是哪一版（排查缓存混搭用）
 (function showVersion() {
