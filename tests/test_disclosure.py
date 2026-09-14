@@ -31,8 +31,12 @@ check("序幕不含任何世界观/结局泄密词",
 check("序幕是第一人称（含「我」）", "我" in OPENING)
 check("序幕不用 QB 的自称与称呼（无「僕」「君」）",
       "僕" not in OPENING and "君" not in OPENING)
-check("序幕够长（>=300 字，交代得下背景）", len(OPENING) >= 300)
+check("序幕字数够长（>=600 字，交代得下完整场景）", len(OPENING) >= 600)
+check("序幕是多段场景描写（>=20 行）", len(OPENING.splitlines()) >= 20)
 check("序幕里主角真的停下了脚步（接得上序章）", "我停下了脚步" in OPENING)
+check("序幕交代了那张表的截止时间", "本周五" in OPENING and "截止" in OPENING)
+check("序幕交代了主角的专业处境（调剂/转专业）",
+      "调剂" in OPENING and "转专业" in OPENING)
 check("序幕在序章之前播放（结尾留悬念）", OPENING.rstrip().endswith("——下面，是我知道的部分。"))
 check("序幕与序章同处一个场景（走廊）", "走廊" in OPENING and "走廊" in SCENE_NOTE)
 check("场景锚点已注入主持指令", SCENE_NOTE in _gm_note(new_state(), ""))

@@ -168,8 +168,11 @@ if (!PROLOGUE || PROLOGUE.length > 120
 // ---- 序幕：主角视角的背景设定，只能出现主角当时知道的事 ----
 const LEAK_WORDS = ["孵化者", "耐久", "相变", "时间线", "能量", "魔法少女", "契约的代价",
                     "灵魂", "结界", "熵", "样本", "愿望"];
-if (!OPENING || OPENING.length < 300) {
-  console.log("FAIL 序幕应存在且够长（>=300 字）"); failed += 1;
+if (!OPENING || OPENING.length < 600) {
+  console.log("FAIL 序幕应存在且够长（>=600 字）"); failed += 1;
+}
+if (OPENING.split("\n").length < 20) {
+  console.log("FAIL 序幕应是多段场景描写（>=20 行）"); failed += 1;
 }
 if (LEAK_WORDS.some((w) => OPENING.includes(w))) {
   console.log("FAIL 序幕不应泄漏世界观/结局信息"); failed += 1;
