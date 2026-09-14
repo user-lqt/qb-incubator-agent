@@ -57,7 +57,11 @@ const DUMP = [
   "    'SCENE_NOTE': game.SCENE_NOTE,",
   "    'PROLOGUE': game.PROLOGUE,",
   "    'EPILOGUES': game.EPILOGUES,",
-  "    'ENDINGS': {k: v['title'] for k, v in game.ENDINGS.items()},",
+  "    'ENDINGS': {k: {'title': v['title'], 'tagline': v['tagline'], 'closing': v['closing']}",
+  "                for k, v in game.ENDINGS.items()},",
+  "    'DISCLOSURE_STAGES': game.DISCLOSURE_STAGES,",
+  "    'DISCLOSURE_FORBIDDEN': {str(k): list(v) for k, v in game.DISCLOSURE_FORBIDDEN.items()},",
+  "    'DECEPTION_RULES': game.DECEPTION_RULES,",
   "}, ensure_ascii=False))",
 ].join("\n");
 
@@ -66,7 +70,7 @@ try {
   const pyGame = JSON.parse(raw);
   const jsGame = await import("../game.js");
 
-  for (const name of ["OPENING", "SCENE_NOTE", "PROLOGUE"]) {
+  for (const name of ["OPENING", "SCENE_NOTE", "PROLOGUE", "DECEPTION_RULES"]) {
     if (jsGame[name] !== pyGame[name]) {
       console.log(`FAIL ${name} 两侧不一致：game.py ${pyGame[name].length} 字 vs web/game.js ${jsGame[name].length} 字`);
       failed += 1;
@@ -79,14 +83,33 @@ try {
     }
   }
   for (const id of Object.keys(pyGame.ENDINGS)) {
-    if (jsGame.ENDINGS[id].title !== pyGame.ENDINGS[id]) {
-      console.log(`FAIL ${id} 结局标题两侧不一致：${jsGame.ENDINGS[id].title} vs ${pyGame.ENDINGS[id]}`);
+    const py = pyGame.ENDINGS[id];
+    const js = jsGame.ENDINGS[id];
+    for (const field of ["title", "tagline", "closing"]) {
+      if (js[field] !== py[field]) {
+        console.log(`FAIL ${id}.${field} 两侧不一致（收尾指令写歪会让同一个结局在两端跑出不同语气）`);
+        failed += 1;
+      }
+    }
+  }
+  // 披露分级：级别名、规则文本、禁用词表都必须一致
+  const pyStages = JSON.stringify(pyGame.DISCLOSURE_STAGES);
+  const jsStages = JSON.stringify(jsGame.DISCLOSURE_STAGES);
+  if (pyStages !== jsStages) {
+    console.log("FAIL DISCLOSURE_STAGES 两侧不一致");
+    failed += 1;
+  }
+  for (const lv of Object.keys(pyGame.DISCLOSURE_FORBIDDEN)) {
+    const py = pyGame.DISCLOSURE_FORBIDDEN[lv].join("|");
+    const js = (jsGame.DISCLOSURE_FORBIDDEN[lv] || []).join("|");
+    if (py !== js) {
+      console.log(`FAIL 第 ${lv} 级禁用词表两侧不一致`);
       failed += 1;
     }
   }
   if (!failed) {
-    console.log(`game.py 与 web/game.js 文本一致（序幕 / 场景锚点 / 序章 / `
-      + `${Object.keys(pyGame.EPILOGUES).length} 条后日谈 / 结局标题）`);
+    console.log(`game.py 与 web/game.js 文本一致（序幕 / 场景锚点 / 序章 / 掩饰规则 / `
+      + `${Object.keys(pyGame.EPILOGUES).length} 条后日谈 / 结局标题+收尾 / 披露分级 / 禁用词表）`);
   }
 } catch (e) {
   console.log("FAIL 跨语言文本一致性校验失败：" + (e.stdout || e.message));

@@ -47,3 +47,6 @@ jobs:
 
       - name: 分级披露测试
         run: python tests/test_disclosure.py
+
+      - name: 人设骨架测试（世界观锚点 / 动作库 / 失败模式）
+        run: python tests/test_persona.py
