@@ -24,17 +24,26 @@ jobs:
   verify:
     name: 前端语法与状态机测试
     runs-on: ubuntu-latest
+    env:
+      # 仅用于让 agent.py 在导入时能构造 OpenAI 客户端；本作业不发起任何模型请求
+      DEEPSEEK_API_KEY: sk-ci-dummy-not-a-real-key
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
+      # sync.test.mjs 会调用 Python 读取 game.py / persona.py，做跨语言文本一致性校验
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: 安装依赖
+        run: pip install -r requirements.txt
       - name: 语法检查
         run: |
           for f in web/*.js web/tests/*.mjs; do node --check "$f"; echo "ok $f"; done
       - name: 结局状态机（JS 版）
         run: node web/tests/game.test.mjs
-      - name: 人设同步校验（persona.py → web/persona.js）
+      - name: 人设同步 + game.py ⇄ web/game.js 文本一致性
         run: node web/tests/sync.test.mjs
 
   deploy:
