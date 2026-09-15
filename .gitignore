@@ -19,3 +19,8 @@ _msg*.txt
 _m*.txt
 _raw_*.md
 _repo.html
+
+# 背景图的本地工作文件：无损母版与旧图备份留在本地，
+# 仓库只保留 pics/bg-src.jpg（tools/make_background.py 的默认生成源）
+pics/bg-src-master.png
+pics/bg-src-*-original.jpg
